@@ -1,0 +1,54 @@
+24 July, 1972
+Summary of 11LOGO "special" characters
+
+Char	Works in	Echo			Description
+     non-edit mode?   if successful	if not
+
+^B	yes		space			always prints as space
+
+^C	no		character	none	copies next character of line
+						being edited
+
+^D	no		^D		none	deletes next character
+						of line being edited
+
+^G	yes		bell			break character
+
+^N	no		characters	none	copies next "word"
+						of line being edited
+
+^Q	yes		^Q			quotes next character
+					(used to type in "special" characters)
+
+^R	no		characters	none	copies rest of line
+						being edited
+
+^S	no		^S		none	skips (deletes) next "word"
+						of line being edited
+
+^W	yes		characters	none	rubs out previous "word"
+
+^Y	only		^Y			causes one to be editing
+			_			the last line typed at LOGO
+
+^Z	yes		^Z			type-in break character
+
+rbo	yes		character	none	rubs out previous character
+
+
+Notes:
+1)  All edit-mode only characters echo as question mark
+	when typed in non-edit mode.
+2)  Vice-versa for ^Y.
+3)  The following characters cannot be quoted:
+	^C, ^Z, and rubout.  (Also ^G and ^Z
+	which take immediate effect.)
+4)  Prompt characters and explanation:
+	?  normal prompt character
+	<  REQUEST prompt character
+	>  EDIT procedure, line, or title
+	_  ^Y (edit previous line)
+5)  On the simulator use ^X instead of ^G.
+6)  For further information or explanation,
+	see Joe Cohen.
+
