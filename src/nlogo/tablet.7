@@ -1,3 +1,4 @@
+; -*-fundamental-*-
 .ifnz lsi
 
 tablet:	mov tabdev,b	;get tablet word
@@ -15,7 +16,9 @@ tablet:	mov tabdev,b	;get tablet word
 	mov 2(f),-(p)
 	swab b		;3rd arg: hi byte minus its hi bit
 	bic #-200,b
-	jsr pc,.csnin
+	push c
+	jsr pc,.csnin	;clobbers things (ugh)
+	pop c
 	push b
 	mov 4(f),-(p)	;3rd name
 	movb c,b	;4th arg: lo byte minus its hi bit
