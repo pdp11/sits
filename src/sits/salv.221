@@ -2983,7 +2983,7 @@ CNTLD:	TYPE <Double density mass copy down?>
 .IF Z FLOP
 BLOCKT:	TYPE <lock at a time copies>
 	MOV #-1000,BACKTL
-	MOV #247.,BACKCN
+	MOV #203.*12.,BACKCN
 	MOV #1,BACKIN
 	JMP SALV2
 
