@@ -9,6 +9,10 @@ PC=%7
 
 .XCREF A,B,C,D,E,F,P,PC
 
+.MACRO DCS A,B
+A===B
+.ENDM
+
 .MACRO SAVE THINGS
 	.IRP  X,<THINGS>
 		.IFB X
@@ -58,4 +62,3 @@ FLAG==F
 .ENDM
 .ENDC
 .ENDM
-
