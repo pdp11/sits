@@ -87,13 +87,17 @@ filreq:	type #ttycap,#dumpas		;ask for filename to create
 	byti #ttycap		;wait for ready signal
 	tst (sp)+
 
+	clr a
+	mov #20.,b		;Wait about 5 sec.
+1$:	sob a,1$
+	sob b,1$
 
 	byto datcap,#'Z-100	;to pdp10: ^z
 
 	clr a			;wait about 5 sec.
 	mov #20.,b
-1$:	sob a,1$
-	sob b,1$
+2$:	sob a,2$
+	sob b,2$
 				;to pdp10:
 	type datcap,#nload	; :login pdp11<cr> :nloder<cr> <filename>
 	byto datcap,#15		; <cr>
