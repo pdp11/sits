@@ -153,7 +153,7 @@ Whaduhyawant?  >
 	MOV A,DISK
 	JMP LOOP
 
-9$:	CMP #'P,A
+9$:	CMP #'L,A
 	BNE 10$
 	JSR PC,PRETTY
 	JMP LOOP
@@ -161,16 +161,16 @@ Whaduhyawant?  >
 	JMP LOOP
 
 CMDS:	TYPE <Commands are:
+0,1,2,3 Select disk drive to use
+C  Check disk that should have pattern on it (continues)
 F  Format
-P  Pretty lights
+L  Pretty lights
+P  Print error counts so far
+Q  Should intterupt test
 R  Read disk
-W  Write patern on disk, read it back
 S  Random seeks+reads (continues)
 T  Write, read, seek  (continues)
-C  Check disk that should have pattern on it (continues)
-Q  Should intterupt test
-P  Print error counts so far
-0,1,2,3 Select disk drive to use
+W  Write patern on disk, read it back
 >
 	RTS PC
 
@@ -225,7 +225,7 @@ INTTST:	MOV PC,INTWAI		;SAY WE EXPECT AN INTERUPT
 1$:	BIC #SMSINT,(F)
 PROMTS:	MOV #PROM,A
 	MOV #173000,B
-	MOV #200,C
+	MOV #177,C
 1$:	CMP (A)+,(B)+
 	BNE 3$
 	SOB C,1$
