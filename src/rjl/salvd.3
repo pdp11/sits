@@ -93,4 +93,36 @@ a BPT instruction which should in turn cause RUG to be called,
 if SALV was loaded by RUG. If SALV is then proceeded (type <esc>P
 to RUG) you will reenter the typein wait you just left.
 SALV can also be restarted (type <esc>G to RUG) to go
-back to the beginning.
+back to the beginning. The following commands take a 1 digit
+number preceeding the command as input. The number specifies
+which disk the command is to effect:
+
+	C	Check a disk. The main function of SALV.
+
+	I	Initialize a disk.
+
+	<control>F	Format a disk.
+
+The following commands take no preceeding input:
+
+	<control>U	Copy logigical disks 0 and 1 to logical disks
+			2 and 3, i.e. copy the fixed platter up to the
+			removable platter on double density drives.
+
+	<control>D	As <control>U, but copy 2 and 3 to 0 and 1, i.e.
+			copy removable down to fixed.
+
+	<control>C	Asks for two disk numbers and copies one logical
+			disk to another logical disk.
+
+(A note about the meaning of "logical disk": currently the only type
+of disk supported by LOGO/SITS/SALV/RUG is the RK11 compatible units
+made by DEC and others. The disk DEC makes has one disk per drive,
+and each disk has 203. tracks; this corresponds to the standard
+"logical disk". The drives made by Caleus and Wangco and supported by
+IMS disk controllers have 2 disks in each drive, one fixed and one
+removeable. Most of these have 203. tracks on each pyhsical disk
+and thus coorespond to 2 logical disks, but there are drives that
+have 406. tracks on each disk, and in this case, currently, each
+pyhsical disk cooresponds to 2 logical disks, and therefore there
+are 4 logical disks per drive. Clear?)
