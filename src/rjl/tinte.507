@@ -2,16 +2,19 @@
 ;warning, this program suffers from an overdose of local symbols
 
 .sbttl definitions
-.if ndf .rpcnt
-rt11=1
-sits=0
+.if nz 5
+;rt11=1
+;sits=0
 lsi=1
+sits=1
+gt2500=1
 .endc
 
 .iif ndf sits,sits=1		;if =1, use sits system calls
 .iif ndf rt11,rt11=0		;if =1, use rt11 system calls
 .iif ndf lsi,lsi=0		;if =1, on lsi, independent of rt11 vs sits
 .iif ndf frp,frp=0		;if =1 use french prompts
+.iif ndf gt2500,gt2500=0
 tvs=0
 .iif nz sits, .iif z lsi, tvs=1
 
@@ -318,7 +321,8 @@ revvid:	c1revv			;reverse video
 nrevid:	c1nrev			;turn off reverse video
 setatr:	c1seta			;set attributes
 
-termty:	c1tab			;the terminal type
+;termty: c1tab			;the terminal type
+.iif nz gt2500, termty: 25tab
 
 ctab:	c1ctab			;the character dispatch table
 
@@ -342,10 +346,11 @@ name'tab:
 yes=1				;yess must ALWAYS be NON-ZERO!!!
 no=0				;no must ALWAYS be ZERO!!!
 
-termd c1,c1,24.,80.,yes,4,yes,c1ctab
+;termd c1,c1,24.,80.,yes,4,yes,c1ctab
 ;termd tt,tt,30.,72.,no,0,no,ttctab
 ;termd tc,tt,30.,72.,no,0,no,c1ctab
 .iif nz tvs, termd tv,tv,38.,96.,no,0,no,tvctab
+.iif nz gt2500, termd 25,25,30.,72.,no,0,no,25ctab
 
 ;atribute translation for c100
 c1atrs:	.byte 10,14,50,54,10,14,50,54,10,14,50,54,10,14,50,54
@@ -2368,12 +2373,69 @@ c1fnt1:	cmp #1,c1fnt		;is it one?
 
 .sbttl tt2500 terminal dependant stuff
 
+.if nz gt2500
 
+;clearscreen
+25clrs:	tyo #35			;homeup
+25eosc:	tyo #37			;clear to end of screen
+	rts pc
 
+;terminal init
+25teri:	jmp scrclr
 
+;clear to end of line
+25sclr:
+25clre:	tyo #36
+	rts pc
 
+;type the char in c, keeping track of the cursor
+25type:	cmp #15,c		;cr?
+	beq 1$			;yup
+	cmp #12,c		;lf?
+	beq 2$			;that's special too
+	cmp #7,c		;bell?
+	beq 5$			;then no new cursor position
+	inc curpos		;normal char, next position
+5$:	jsr pc,.tyo		;print the char
+1$:	clr carpos		;cr
+	br 5$
+2$:	inc linpos		;lf
+	inc rlinps
+	br 5$
 
+;set the cursor to the address in a,b
+25absp:	cmp a,rlinps		;already on that line?
+	bne 1$			;nope
+	cmp b,carpos		;already on that char?
+	beq 2$			;yup, do nothing
 
+1$:	mov a,rlinps		;set the line position
+	mov a,linpos		;and linpos
+	dec linpos		;(minus 1)
+	mov b,carpos		;and the car pos
+
+	tyo #35			;homeup (to 0,0)
+	tst a			;right line?
+	bne 4$			;not yet
+3$:	tyo #12			;down 1 line
+	sob a,3$		;til we get there
+4$:	tst b			;right char pos?
+	bne 6$			;not yet
+5$:	tyo #30			;fd 1 char
+	sob b,5$		;til we get there
+
+	mov rlinps,a		;restore a,b
+	mov carpos,b
+2$:	rts pc
+
+;insert/delete lines shouldn't be called
+25tinl:
+25tdel:	halt
+
+;just ignore these
+25unde:	25nund:	25blin:	25nbli:	25revv:	25nrev:	25seta:	rts pc
+
+.endc	;nz gt2500
 
 .if nz tvs
 .sbttl TV terminal dependant stuff
@@ -2940,6 +3002,54 @@ foo=foo+1
 .endc	;df pass2
 .=crctbe
 .endc	;nz tv
+
+.if nz gt2500
+	dctab 25		;dispatch table for tvs
+.if df pass2
+
+;define all the normal keys
+.rept 95.
+	dk 40+.rpcnt,chrnrm
+.endr
+
+	dk 15,chrcr		;go to the next line
+	dkm 15,chrlin		;do a line break
+	dk 33,chrmta		;do it
+	dkm 33,chrmta		;do it
+	dkc 33,chrmta		;do it
+	dkcm 33,chrmta		;do it
+	dk 177,chrdel		;rubout
+	dkc 'D,chrdlf		;delete forward
+	dk 11,chrtab		;tab key
+	dk 7,chrqui		;stop
+	dkm 7,die		;meta stop dies
+	dk 14,scrclr		;for debugging, clear screen
+
+;function pad definitions
+	dkc 'P,chrup		;cursor up
+	dkc 'N,chrdn		;cursor down
+	dkc 'B,chrlt		;cursor left
+	dk 8,chrlt
+	dkc 'F,chrrt		;cursor right
+
+	dkm 'h,chrhom		;home key
+	dkm 'f,chrfil		;filing operations
+	dkm 'V,chrscu		;scroll up
+	dkm 'v,chrscd		;scroll down
+	dkm 'p,chrpag		;go to next page
+	dkm '{,chrprt		;print
+	dkm 't,chrstt		;set tab
+	dkm 'T,chrclt		;clear tab
+	dkm 's,chrser		;search
+	dkc 'W,chrswo		;word
+	dkc 'L,chrsli		;line
+	dkc 'S,chrsse		;sentence
+	dkm 'n,chrno		;no
+	dkm 'y,chryes		;yes
+
+.endc	;df pass2
+.=crctbe
+.endc	;nz gt2500
 
 .sbttl character routines
 ;these are the character routines
