@@ -1,0 +1,14 @@
+.MACRO .GLOBL A,B,C,D,E,F,G,H,I,J,K,L,M,N
+	.IRP X,<A,B,C,D,E,F,G,H,I,J,K,L,M,N>
+		.IF NB X
+			.IF DF PASS2
+				.IF NDF X
+					X==0
+					.PRINT /X UNDEFINED GLOBAL/
+				 .IFF
+					.PRINT /X DEFINED GLOBAL/
+				.ENDC
+			.ENDC
+		.ENDC
+	.ENDM
+.ENDM
