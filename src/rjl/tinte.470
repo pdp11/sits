@@ -1235,11 +1235,11 @@ copy:	save <c,b>
 
 .sbttl screen updating routines
 update:	jsr pc,tyip		;any pending input?
-	beq updatf		;nope
+	beq 1$			;nope
 	rts pc			;abort the redisplay
+1$:	jsr pc,dstat		;update the status line if it needs it
 updatf:	jsr f,acsav		;save all the register
 	jsr pc,cleanu		;random cleanup
-	jsr pc,dstat		;update the status line if it needs it
 	tst ntopln		;did someone set a topline value?
 	bne updats		;actually update the screen, we know what top line to use
 	mov toplin,a		;starting with this top line
@@ -1587,7 +1587,7 @@ upinsl:	save b
 	rest a
 1$:	sub #2,b		;one up
 	cmp a,b			;at the place to insert?
-	bhi 2$			;yup
+	bgt 2$			;yup
 	mov screen(b),screen+2(b)
 	mov screls(b),screls+2(b)
 	mov screle(b),screle+2(b)
@@ -2002,6 +2002,14 @@ c1teri:	tyoesc #'U		;set programmer mode or abs move won't work!
 	tyo #46			;eom
 	tyo #0			;gets changed to null
 	tyoesc #'X		;set function pad to xmit
+	mov #24,a		;this will set shifted keys 1-16 and unshifted 1-5
+				;all we really need is (un)shifted 1-5
+1$:	tyoesc #'4		;set function key
+	tyo #40			;zero message length
+	tyo40 a			;this key
+	tyo #40			;send the default sequence
+	dec a
+	bge 1$
 	tyoesc #'W		;set the cursor to the blinking block
 	jmp scrclr		;clear the screen image
 
@@ -4998,6 +5006,10 @@ quread:	cmp #40,a		;terminated on space?
 	jsr pc,getnam		;get the name
 	cmp #chrfsw,f		;french accent?
 	beq 1$			;yup
+	cmp #chryes,f		;also allow yes and no as terminators
+	beq 1$
+	cmp #chrno,f
+	beq 1$
 	mov a,rescan		;will re-read
 	ding
 1$:	rts pc
