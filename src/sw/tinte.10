@@ -1,3 +1,4 @@
+; -*-fundamental-*-
 .title TINTE is not TECO either
 ;warning, this program suffers from an overdose of local symbols
 
@@ -1921,7 +1922,7 @@ getchp:	save <a,c,e,d>
 	tst d			;zero?
 	ble 3$			;just return count then
 	movb (a)+,c		;get a character
-.error **** work here!!
+;.error **** work here!!
 	jsr pc,charsz		;how big is it?
 	sub c,d
 	br 2$
@@ -2395,8 +2396,12 @@ c1fnt1:	cmp #1,c1fnt		;is it one?
 	beq 2$			;that's special too
 	cmp #7,c		;bell?
 	beq 5$			;then no new cursor position
-	inc curpos		;normal char, next position
-5$:	jsr pc,.tyo		;print the char
+	cmp #fixchr,c		;fixed space?
+	bne 3$
+	mov #40,c
+3$:	inc carpos		;normal char, next position
+5$:	jmp .tyo		;print the char
+
 1$:	clr carpos		;cr
 	br 5$
 2$:	inc linpos		;lf
@@ -2404,29 +2409,38 @@ c1fnt1:	cmp #1,c1fnt		;is it one?
 	br 5$
 
 ;set the cursor to the address in a,b
-25absp:	cmp a,rlinps		;already on that line?
-	bne 1$			;nope
-	cmp b,carpos		;already on that char?
-	beq 2$			;yup, do nothing
+25absp:	cmp rlinps,a		;right line?
+	beq 4$			
+	blo 31$
+3$:	tyo #12			;no, too high, go down til we get to it.
+	inc rlinps
+	cmp rlinps,a
+	bne 3$
+	br 4$
 
-1$:	mov a,rlinps		;set the line position
-	mov a,linpos		;and linpos
-	dec linpos		;(minus 1)
-	mov b,carpos		;and the car pos
+31$:	tyo #32			;too low, go up til we get to it
+	dec rlinps
+	cmp rlinps,a
+	bne 31$
 
-	tyo #35			;homeup (to 0,0)
-	tst a			;right line?
-	bne 4$			;not yet
-3$:	tyo #12			;down 1 line
-	sob a,3$		;til we get there
-4$:	tst b			;right char pos?
-	bne 6$			;not yet
-5$:	tyo #30			;fd 1 char
-	sob b,5$		;til we get there
+4$:	mov a,linpos		;right line.
+	dec linpos
+	cmp b,carpos		;right char pos?
+	beq 6$			
+	blo 51$			
 
-	mov rlinps,a		;restore a,b
-	mov carpos,b
-2$:	rts pc
+5$:	tyo #30			;no, need to go fwd
+	inc carpos
+	cmp b,carpos
+	bne 5$
+	br 6$
+
+51$:	tyo #31			;need to go back
+	dec carpos
+	cmp b,carpos
+	bne 51$
+
+6$:	rts pc
 
 ;insert/delete lines shouldn't be called
 25tinl:
@@ -3004,7 +3018,7 @@ foo=foo+1
 .endc	;nz tv
 
 .if nz gt2500
-	dctab 25		;dispatch table for tvs
+	dctab 25		;dispatch table for 2500
 .if df pass2
 
 ;define all the normal keys
@@ -3018,18 +3032,32 @@ foo=foo+1
 	dkm 33,chrmta		;do it
 	dkc 33,chrmta		;do it
 	dkcm 33,chrmta		;do it
+	dk 0,chrctl		;aux
+	dkc 0,chrctl		;aux
+	dkm 0,chrctl		;aux
+	dkcm 0,chrctl		;aux
 	dk 177,chrdel		;rubout
-	dkc 'D,chrdlf		;delete forward
+	dk 'D-100,chrdlf	;delete forward
+	dkc 'd			;delete forward
 	dk 11,chrtab		;tab key
 	dk 7,chrqui		;stop
+	dkc 'g			;stop
 	dkm 7,die		;meta stop dies
+	dkcm 'g,die
 	dk 14,scrclr		;for debugging, clear screen
 
 ;function pad definitions
+	dk 'P-100,chrup		;cursor up
+	dkc 'p,chrup		;cursor up
 	dkc 'P,chrup		;cursor up
+	dk 'N-100,chrdn		;cursor down
+	dkc 'n,chrdn		;cursor down
 	dkc 'N,chrdn		;cursor down
-	dkc 'B,chrlt		;cursor left
+	dk 'B-100,chrlt		;cursor left
+	dkc 'b,chrlt		;cursor left
 	dk 8,chrlt
+	dk 'F-100,chrrt		;cursor right
+	dkc 'f,chrrt		;cursor right
 	dkc 'F,chrrt		;cursor right
 
 	dkm 'h,chrhom		;home key
@@ -3041,8 +3069,14 @@ foo=foo+1
 	dkm 't,chrstt		;set tab
 	dkm 'T,chrclt		;clear tab
 	dkm 's,chrser		;search
+	dk 'W-100,chrswo
+	dkc 'w,chrswo		;word
 	dkc 'W,chrswo		;word
+	dk 'L-100,chrsli
+	dkc 'l,chrsli		;line
 	dkc 'L,chrsli		;line
+	dk 'S-100,chrsse
+	dkc 's,chrsse		;sentence
 	dkc 'S,chrsse		;sentence
 	dkm 'n,chrno		;no
 	dkm 'y,chryes		;yes
@@ -4308,7 +4342,7 @@ kilbuf:	jsr f,acsav
 	rts pc
 
 
-.iif z rt11, .insrt tnfile >
+.iif z rt11, .insrt rjl;tnfile >
 .sbttl mode and command stuff
 ;set entry modes
 chrmod:	mov #modep,a		;entry mode prompt
@@ -4320,7 +4354,7 @@ chrmo1:	jsr pc,dmenu		;display it and gobble down the settings
 chrecm:	mov #excmdp,a		;extended command prompt
 	mov #excmdm,e		;extended command menu
 	br chrmo1
-.iif z rt11,.insrt tnprin >
+.iif z rt11,.insrt rjl;tnprin >
 
 .sbttl menu routines
 ;read a sting in the status line and do completion for the menu in e
