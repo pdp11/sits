@@ -15493,19 +15493,19 @@ MAKEW1:	MOV TOPS,F	;F GETS A POINTER TO THE ARRAY
 OUTLUP:	MOV 4(P),E	;(RE)SET COUNT1
 
 INLUP:	MOV D,TVRADR
+	MOV TVRWIN, A			;Pick up next two words of display memory.
 	ADD #2.,D
-	MOV TVRWIN, B			;Pick up next two words of display memory.
 	MOV D,TVRADR
-	MOV TVRWIN, A			;Address increments a word at a time. 
+	MOV TVRWIN,B			;Address increments a word at a time. 
 ;	MOV (D)+,B	;READ NEXT
 ;	MOV (D),A	;TWO WORD OF DISPLAY MEMORY
 
 
 	ASHC (P),A	;SHIFT
-	COM B		;STORE THE WINDOW IN COMPLEMENTED FORM 
-	MOV B,(F)+	;PUT THE WORD INTO THE WINDOW ARRAY
+	COM A		;STORE THE WINDOW IN COMPLEMENTED FORM 
+	MOV A,(F)+	;PUT THE WORD INTO THE WINDOW ARRAY
 	SOB E,INLUP	;ITERATE
-	BIC 6.(P),-2(F)	;MASK THE EXTRANEOUS BITS
+	BIS 6.(P),-2(F)	;MASK THE EXTRANEOUS BITS
 
 	ADD #BYTLINE, 2(P)		;Point to word in next line. 
 ;	MOV 2(P), TVRADR		;Less 2 because address incremented each read.
@@ -15579,7 +15579,7 @@ WINDOW:
 	ASL D		;CONVERT TO BYTES
 ;	ADD #DISAD,D
 ;	SAVE <8.(B)>
-	SAVE <D,6.(B),F>   ;SAVE POINTER TO DISPLAY MEM, X INDEX(XDIM),SHIFT
+	SAVE <STARMS(F),D,6.(B),F>   ;SAVE POINTER TO DISPLAY MEM, X INDEX(XDIM),SHIFT
 	MOV 8.(B),A	;A GETS Y INDEX (YDIM)
 	ADD #HEADER,B
 ;	JSR PC,TVMON	;TURN ON TVMAP
@@ -15598,14 +15598,14 @@ LOOP1:	MOV 2(P),C	;A:counter y,B:pointer into array C:counter x
 LOOP2:	MOV #-1,E		;SET ALL THE BITS IN E FOR THE SHIFT	MOV (B)+,F
 	MOV (B)+,F
 	ASHC (P),E
-
+	BIS 6.(P),E
 ;	COM F				;Write words in F and E on screen.
-	MOV F, TVMSK			;(This loop can be optimized...)
+	MOV E, TVMSK			;(This loop can be optimized...)
 	MOV D,TVRADR
 	MOV WINDATA, TVRWIN
 	ADD #2.,D
 ;	COM E
-	MOV E, TVMSK
+	MOV F, TVMSK
 	MOV D,TVRADR
 	MOV WINDATA, TVRWIN
 ;	BIS F,(D)+
@@ -15618,7 +15618,7 @@ LOOP2:	MOV #-1,E		;SET ALL THE BITS IN E FOR THE SHIFT	MOV (B)+,F
 ;	ADD 4(P),D
 	SOB A,LOOP1
 
-	ADD #6,P	;CLEAR STACK
+	ADD #8.,P	;CLEAR STACK
 	REST <TVSEL, WINDATA>
 	SEZ 
 	RTS PC
