@@ -2,9 +2,10 @@
 ;warning, this program suffers from an overdose of local symbols
 
 .sbttl definitions
-.if ndf %fnam2
+.if ndf .rpcnt
 rt11=1
 sits=0
+lsi=1
 .endc
 
 .iif ndf sits,sits=1		;if =1, use sits system calls
@@ -14,10 +15,32 @@ sits=0
 tvs=0
 .iif nz sits, .iif z lsi, tvs=1
 
+.if nz rt11
+.mcall .lookup,.enter,.readw,.scca,.ttyout,.writw,.date,.gtim,.exit
+.mcall .ttyin,.close,.delete,.lookup,.purge,.rename,.fetch,.lock
+.mcall .qset,.rctrlo,.settop,.ttinr,.gtim
+.enabl lc
+
+jsw=44
+ jswlc=40000			;enable lower case
+ jswren=20000			;enable reenter
+ jswspm=10000			;special tty mode
+ jswntw=100			;always return on tty call
+ jswene=20			;enable escape sequence processing
+
+rtmemh=50			;highest address rt11 thinks we use
+rterrb=52			;error byte
+
+.endc
+
+.if z rt11
 .iif z lsi,prtnum=14		;on 11/45, printer tty number
 .iif nz lsi,prtnum=1		;on the lsi
+.iff
+prtnum=0			;no printer
+.endc
 
-.iif nz rt11,vern=%fnam2
+.iif z rt11,vern=%fnam2
 
 .if nz sits
 .macro dcs name,val
@@ -71,14 +94,20 @@ pc=%7
 .endm
 
 .sbttl miscelaneous storage
-.if z rt11
+
 bptbrv=14
 trpbrv=34
+
+.iif nz rt11, .asect
 .=bptbrv
 	.+2
 	baderr
 .=trpbrv
 	trpbrk
+
+.iif nz rt11, .csect
+
+.if z rt11
 .=40
 
 .if nz lsi
@@ -97,6 +126,10 @@ lsdisk=1
 lsprnt=0
 lsmap=0
 lsclk=1
+.iif ndf rkdsk
+rkdsk==0
+smsdsk==1
+.endc
 .insrt rjl;flopdf
 .insrt nlogo;lsitvr
 .insrt nlogo;lsits
@@ -121,6 +154,7 @@ meta=400			;meta bit
 ctmtbt:	0			;meta and control bits
 lastch:	0			;last (currently being processed) character typed in
 rescan:	0			;character to be re-read
+tyisav:	0			;for RT11, the character input by the last tyip
 repcnt:	0			;repeat count for the command
 noun:	char			;what type of object to act on, for certain operations
 ;**** don't change these without changing the dispatch tables in the code
@@ -167,6 +201,7 @@ bufend:	0			;line number of first non-ex line
 ubufep:	0			;used by update, pointer to the first non-ex line
 statln:	.blkb 128.		;image of status line
 dstcar:	0			;temp used by dstat
+pchr:	0			;either htyo or stypec
 
 defstr:	0			;pointer to the string to use if zero-length string given
 maxstr=60.
@@ -188,7 +223,7 @@ scrend:	;(end mark)		;if a line in the buffer is going to get modified
 				;unless whoever updates it also updates the screen
 				;a zero pointer implies we don't know what is on the
 				;line.
-blank==1			;a 1 indicates that the line is known to be blank
+blank=1				;a 1 indicates that the line is known to be blank
 
 screeb:	.blkw maxlin		;if non-zero the cooresponding screen line is also
 				;an active buffer line => don't delete it
@@ -233,6 +268,7 @@ kiltln:	0			;temp place to put the kill line
 zeroe:				;end of stuff that gets zeroed
 
 autofl:	70.			;place to auto fill
+tabmod:	rt11			;if non-zero tabs get inserted, else they insert fixed spaces
 fixspp:	0			;if non-zero print fixed spaces so they can be seen
 boldmd:	0			;if yes all text is entered bold
 undrmd:	0			;if yes all text is entered underlined
@@ -312,7 +348,7 @@ termd c1,c1,24.,80.,yes,4,yes,c1ctab
 .iif nz tvs, termd tv,tv,38.,96.,no,0,no,tvctab
 
 ;atribute translation for c100
-c1atrs:	.byte 0,4,40,44,0,4,40,44,0,4,40,44,0,4,40,44
+c1atrs:	.byte 10,14,50,54,10,14,50,54,10,14,50,54,10,14,50,54
 
 c1spcc:	.byte 36,26,27,34,35,37,0,0	;special character translation
 
@@ -339,7 +375,7 @@ menuoh=14			;overhead, where the text starts
 .if df pass2
 .if nb dispat
 .if ndf dispat
-.error dispat not defined
+.error ;dispat not defined
 dispat=chrund
 .endc
 .endc
@@ -358,62 +394,63 @@ foo=menuex
 .iif b def1,0
 	insrot
 .iif b insrot,0
-	.asciz /text/
+	.asciz &text&
 	.even
 .endm
 
-bits:	.asciz /BITS/		;for finding the bit table
+bits:	.asciz &BITS&		;for finding the bit table
 
 filep:
-eng <	.asciz /File:/>		;file prompt
-fr  <	.asciz /Fichier:/>		;file prompt
+eng <	.asciz &File:&>		;file prompt
+fr  <	.asciz &Fichier:&>		;file prompt
 
 disknp:
-eng <	.asciz /Disk number:/>	;disk number prompt
-fr  <	.asciz /Numero du disque:/>	;disk number prompt
+eng <	.asciz &Disk number:&>	;disk number prompt
+fr  <	.asciz &Numero du disque:&>	;disk number prompt
 
 searcp:
-eng <	.asciz /Search:/>
-fr  <	.asciz /Chercher:/>
+eng <	.asciz &Search:&>
+fr  <	.asciz &Cherche:&>
 
 rsercp:
-eng <	.asciz /Reverse search:/>
-fr  <	.asciz /Chercher en arriere:/>
+eng <	.asciz &Reverse search:&>
+fr  <	.asciz &Cherche en arriere:&>
 
 savep:
-eng <	.asciz /Save file:/>
-fr  <	.asciz /Fichier pour sauver:/>
+eng <	.asciz &Save file:&>
+fr  <	.asciz &Fichier pour sauver:&>
 
 yesstr:
-eng <	.asciz /Yes/>
-fr  <	.asciz /Oui/>
+eng <	.asciz &Yes&>
+fr  <	.asciz &Oui&>
 
 nostr:
-eng <	.asciz /No/>
-fr  <	.asciz /Non/>
+eng <	.asciz &No&>
+fr  <	.asciz &Non&>
 
 modep:
-eng <	.asciz /Select entry modes:/>
-fr  <	.asciz /Choisir modes d'entree:/>
+eng <	.asciz &Select entry modes:&>
+fr  <	.asciz &Choisir modes d'entr/ee:&>
 
 excmdp:
-eng <	.asciz /Extended command:/>
-fr  <	.asciz /Extended command:/>
+eng <	.asciz &General commands:&>
+fr  <	.asciz &Commandes g/en/erales:&>
 
 argstr:
-eng <	.asciz /Argument:/>
-fr  <	.asciz /Argument:/>
+eng <	.asciz &Argument:&>
+fr  <	.asciz &Argument:&>
 
 printp:
-eng <	.asciz /Printer:/>
-fr  <	.asciz /Imprimante:/>
+eng <	.asciz &Printer:&>
+fr  <	.asciz &Imprimante:&>
 
 deletp:
-eng <	.asciz /Delete file?/>
-fr  <	.asciz /Detruis fichier?/>
+eng <	.asciz &Delete file?&>
+fr  <	.asciz &D/etruis fichier?&>
 
-inches:	.asciz / in/
-cm:	.asciz / cm/
+eng <	inches:	.asciz & in&>
+fr  <	inches:	.asciz & po&>
+cm:	.asciz & cm&
 
 	.even
 
@@ -423,120 +460,140 @@ cm:	.asciz / cm/
 
 filehl:
 eng <	menui <File commands:>>
-fr  <	menui <Demands des fichiers:>>
-	menui <Edit>,fedit
+fr  <	menui <Commandes du fichier:>>
+eng <	menui <Edit>,fedit>
+fr  <	menui <Edite>,fedit>
 eng <	menui <Read>,fread>
-fr  <	menui <Ramene>,fread>
+fr  <	menui <Ram\ene>,fread>
 eng <	menui <Save>,fsave>
-fr  <	menui <Sauver>,fsave>
+fr  <	menui <Sauve>,fsave>
 eng <	menui <Delete>,fdelet>
-fr  <	menui <Detruis>,fdelet>
+fr  <	menui <D/etruis>,fdelet>
+.if nz sits
 eng <	menui <Directory delete>,ddelet>
-fr  <	menui <Index detruis>,ddelet>
-.iif nz lsi,	menui <Chain>,fchain
+fr  <	menui <Index \a d/etruire>,ddelet>
+.endc
+.if nz lsi&sits
+eng <	menui <Chain>,fchain>
+fr  <	menui <Encha^ine>,fchain>
+.endc
+.if nz sits
 eng <	menui <Create index>,icreat>
-fr  <	menui <Cree index>,icreat>
+fr  <	menui <Cr/ee index>,icreat>
+.endc
 eng <	menui <Show index>,sindex>
 fr  <	menui <Montre index>,sindex>
-	menui <Insert>,finsrt
-	menui <Append>,fappen
+eng <	menui <Insert>,finsrt>
+fr  <	menui <Insert>,finsrt>
+eng <	menui <Append>,fappen>
+fr  <	menui <Ajoute>,fappen>
 	0
 
 
 ;entry modes
 emodem:
 eng <	menui <Entry modes:>>
-fr  <	menui <Modes d'entre:>>
+fr  <	menui <Modes d'entr/ee:>>
 eng <	menui <Auto fill column>,msetnm,autofl,mprtnm,70.>
-fr  <	menui <Auto fill column>,msetnm,autofl,mprtnm,70.>
+fr  <	menui <Retour automatique>,msetnm,autofl,mprtnm,70.>
 eng <	menui <French input>,msetyn,french,mprtyn,no>
-fr  <	menui <French input>,msetyn,french,mprtyn,yes>
+fr  <	menui <Accents fran/cais>,msetyn,french,mprtyn,yes>
 eng <	menui <Show fixed spaces>,msetsf,fixspp,mprtyn,no>
-fr  <	menui <Show fixed spaces>,msetsf,fixspp,mprtyn,no>
+fr  <	menui <Espaces fixes>,msetsf,fixspp,mprtyn,no>
 eng <	menui <Shift lock>,msetsl,shtlck,mprtyn,no>
-fr  <	menui <Shift lock>,msetsl,shtlck,mprtyn,no>
+fr  <	menui <Majuscules>,msetsl,shtlck,mprtyn,no>
 ;eng <	menui <Chop lines>,msetyn,chop,mprtyn,no>
-;fr  <	menui <Chop lines>,msetyn,chop,mprtyn,no>
+;fr  <	menui <Lignes bris/ees>,msetyn,chop,mprtyn,no>
 eng <	menui <Bold entry>,msetyn,boldmd,mprtyn,no>
-fr  <	menui <Bold entry>,msetyn,boldmd,mprtyn,no>
+fr  <	menui <Caract\eres gras>,msetyn,boldmd,mprtyn,no>
 eng <	menui <Underline entry>,msetyn,undrmd,mprtyn,no>
-fr  <	menui <Underline entry>,msetyn,undrmd,mprtyn,no>
+fr  <	menui <Souligner>,msetyn,undrmd,mprtyn,no>
 eng <	menui <Reset entry modes>,mreset>
-fr  <	menui <Reset entry modes>,mreset>
+fr  <	menui <Modes de d/epart>,mreset>
 	0
 ;extended commands
 excmdm:
-	menui <Extended commands:>
+eng <	menui <General commands:>>
+fr  <	menui <Commandes g/en/erales:>>
 eng <	menui <Delete memory>,kilbuf>
-fr  <	menui <Delete memory>,kilbuf>
-	menui <Reset everything>,reseta
+fr  <	menui <Efface tout>,kilbuf>
+eng <	menui <Reset everything>,reseta>
+fr  <	menui <Mise \a z/ero de tout>,reseta>
 	0
 
+.if nz prtnum
 ;print menu
 printm:
 eng <	menui <Printer commands:>>
 fr  <	menui <Commandes de l'imprimante:>>
 setpmp=.+menuoh			;make a pointer to the next string, for chrspr
 eng <	menui <Set modes>,setpmd>
-fr  <	menui <Fixe les modalites>,setpmd>
+fr  <	menui <Fixe les modalit/es>,setpmd>
 inspmp=.+menuoh			;make a pointer to the next string, for chripr
 eng <	menui <Insert print command>,inspcm>
-fr  <	menui <Insert print command>,inspcm>
+fr  <	menui <Ins\ere les commandes d'impression>,inspcm>
 eng <	menui <Verbatim print memory>,chrvpr>
-fr  <	menui <Verbatim print memory>,chrvpr>
+fr  <	menui <M/emoire imprim/ee telle quelle>,chrvpr>
 eng <	menui <Print memory>,chrprj>
-fr  <	menui <Imprime memorie>,chrprj>
+fr  <	menui <Imprime m/emorie>,chrprj>
 eng <	menui <Verbatim print file>,filprt>
-fr  <	menui <Verbatim print file>,filprt>
+fr  <	menui <Fichier imprim/e tel quel>,filprt>
 eng <	menui <Print file>,filjpr>
-fr  <	menui <Imprime fichier>,filjpr>
+fr  <	menui <Imprime le fichier>,filjpr>
 	0
 
 ;printer modes menu
 prtmdm:
 eng <	menui <Printer:>>
-fr  <	menui <Printer:>>
+fr  <	menui <Imprimante:>>
 eng <	menui <Justify>,msetju,pradjm,mprtyn,no,minscn>
-fr  <	menui <Justify>,msetju,pradjm,mprtyn,no,minscn>
+fr  <	menui <Justifie>,msetju,pradjm,mprtyn,no,minscn>
 eng <	menui <Fill>,msetyn,prfilm,mprtyn,yes,minsyn>
-fr  <	menui <Fill>,msetyn,prfilm,mprtyn,yes,minsyn>
+fr  <	menui <Remplis>,msetyn,prfilm,mprtyn,yes,minsyn>
 eng <	menui <Center>,msetcn,prcenm,mprtyn,no,minscn>
-fr  <	menui <Center>,msetcn,prcenm,mprtyn,no,minscn>
+fr  <	menui <Centre>,msetcn,prcenm,mprtyn,no,minscn>
 eng <	menui <Right adjust>,msetcn,prrgtm,mprtyn,no,minscn>
-fr  <	menui <Right adjust>,msetcn,prrgtm,mprtyn,no,minscn>
+fr  <	menui <Ajuste \a droite>,msetcn,prrgtm,mprtyn,no,minscn>
 eng <	menui <Left adjust>,msetcn,prlftm,mprtyn,no,minscn>
-fr  <	menui <Left adjust>,msetcn,prlftm,mprtyn,no,minscn>
+fr  <	menui <Ajuste \a gauche>,msetcn,prlftm,mprtyn,no,minscn>
 eng <	menui <French typewheel>,msetyn,prfrfm,mprtyn,no,minsyn>
-fr  <	menui <French typewheel>,msetyn,prfrfm,mprtyn,yes,minsyn>
-	menui <Pitch>,msetpt,prpitc,mprtnm,10.,minspt
+fr  <	menui <Marguerite fran/caise>,msetyn,prfrfm,mprtyn,yes,minsyn>
+eng <	menui <Pitch>,msetpt,prpitc,mprtnm,10.,minspt>
+fr  <	menui <Pas d'impression>,msetpt,prpitc,mprtnm,10.,minspt>
 eng <	menui <Metric measurements>,msetyn,prmetm,mprtyn,no>
-fr  <	menui <Metric measurements>,msetyn,prmetm,mprtyn,yes>
+fr  <	menui <Mesures m/etriques>,msetyn,prmetm,mprtyn,yes>
 eng <	menui <Continous paper>,msetyn,prcnpm,mprtyn,no>
-fr  <	menui <Continous paper>,msetyn,prcnpm,mprtyn,no>
+fr  <	menui <Papier continu>,msetyn,prcnpm,mprtyn,no>
 eng <	menui <Page width>,msetms,piwidt,mprtms,8500.,minsms>
-fr  <	menui <Page width>,msetms,piwidt,mprtms,8500.,minsms>
+fr  <	menui <Largeur de page>,msetms,piwidt,mprtms,8500.,minsms>
 eng <	menui <Text width>,msetms,pitwid,mprtms,6250.,minsms>
-fr  <	menui <Text width>,msetms,pitwid,mprtms,6250.,minsms>
+fr  <	menui <Largeur du texte>,msetms,pitwid,mprtms,6250.,minsms>
 eng <	menui <Page length>,msetms,pilent,mprtms,11000.,minsms>
-fr  <	menui <Page length>,msetms,pilent,mprtms,11000.,minsms>
+fr  <	menui <Longueur de page>,msetms,pilent,mprtms,11000.,minsms>
 eng <	menui <Text length>,msettl,pitlen,mprtms,9000.,minsms>
-fr  <	menui <Text length>,msettl,pitlen,mprtms,9000.,minsms>
+fr  <	menui <Longueur du texte>,msettl,pitlen,mprtms,9000.,minsms>
 eng <	menui <Lines per page>,msetlp,plinpp,mprtnm,48.,minsnm>
-fr  <	menui <Lines per page>,msetlp,plinpp,mprtnm,48.,minsnm>
+fr  <	menui <Nombre de lignes par page>,msetlp,plinpp,mprtnm,48.,minsnm>
 eng <	menui <Interline spacing>,msetis,plinis,mprtms,187.,minsms>
-fr  <	menui <Interline spacing>,msetis,plinis,mprtms,187.,minsms>
-	menui <Indent>,msetms,pindnt,,0,minsms,io
-	menui <Printer pause>,prstop,,,,minscn,io
-	menui <New page>,prnpag,,,,minscn,io
-	menui <Start quote>,prstqu,,,,minscn,io
-	menui <End quote>,prenqu,,,,minscn,io
+fr  <	menui <Espacement d'interligne>,msetis,plinis,mprtms,187.,minsms>
+eng <	menui <Indent>,msetms,pindnt,,0,minsms,io>
+fr  <	menui <Alin/ea>,msetms,pindnt,,0,minsms,io>
+eng <	menui <Printer pause>,prstop,,,,minscn,io>
+fr  <	menui <Pause d'impression>,prstop,,,,minscn,io>
+eng <	menui <New page>,prnpag,,,,minscn,io>
+fr  <	menui <Nouvelle page>,prnpag,,,,minscn,io>
+eng <	menui <Start quote>,prstqu,,,,minscn,io>
+fr  <	menui <Citation d/ebut>,prstqu,,,,minscn,io>
+eng <	menui <End quote>,prenqu,,,,minscn,io>
+fr  <	menui <Citation fin>,prenqu,,,,minscn,io>
 eng <	menui <Reset printer modes>,preset>
-fr  <	menui <Reset printer modes>,preset>
+fr  <	menui <Mise \a z/ero>,preset>
 	0
 
 prtsav:	.blkw 30.		;this must be at least as long as there are variables in the
-				;printer menu
-
+				;printer menu
+.endc ;nz prtnum
+
 quitrt:	chrqui			;quit routine
 
 menusv:	0			;temp to keep menu pointer
@@ -553,9 +610,9 @@ prompt:	0			;prompting for file, menu, etc.
 strech:	0			;string being input
 prstat:	0			;printer status (for background printer)
 statae:				;end of whatever you like
-greet:	.asciz /Experimental V0XG/	;boy, is this EVER version 0!!!
-slmes:	.asciz /SL/		;shift locked
-
+greet:	.asciz /Pro Plus V0/	;boy, is this EVER version 0!!!
+eng <slmes:	.asciz /SL/>		;shift locked
+fr  <slmes:	.asciz /MAJ/>
 ;variables for tabs
 tabs:	.blkb 200./8.		;allow for up to 200. tab stops on character positions
 	.even
@@ -609,11 +666,26 @@ date:	0
 time:	0
 enname:	.blkw 10.		;name and descriptor
 entend:
-mxenln==.-entry			;max entry length in bytes
+mxenln=.-entry			;max entry length in bytes
 
+sstats::			;the sits status area
+svern:	0			;sits version
+stime:	.blkw 2			;time since sys start in 60ths
+scsr:	0			;consloe switchs
+looksw:	0
+rands:	.blkw 10		;potentially there are more
 
+;date-time table
+;bit format of date & time words is:
+;     yr  mo  da        hr  min  sec/2
+;	date: 7   4   5   time: 5   6     5
 
-
+dttab:	-5,177760,0,'/
+	0,177740,0,'/
+	-9.,177600,0,' 
+	-11.,177740,0,':
+	-5,177700,0,':
+	0,177740,1,40
 
 dbufl=400			;input/output buffer lengths
 dibufp:	0			;pointer into input buffer
@@ -623,8 +695,12 @@ dobufp:	0			;pointer into output buffer
 dobuf:	.blkb dbufl		;output buffer
 
 
+.endc ;nz sits
+
+.if nz rt11
+emttmp:	.blkw 2
+stime:	.blkw 2
 .endc
-
 
 .sbttl french accent stuff
 french:	frp			;if non-zero do french translations
@@ -690,6 +766,15 @@ fntfr:	0,'@,"^a,'\,"`e,"^e,"~e,'{,"^i,"~i,"`o,"^o,"~o,"`u,"^u,"~u
 ;for courier 10
 fnteng:	0,"\a,"^a,",c,"/e,"^e,""e,"\e,"^i,""i,"\o,"^o,""o,"\u,"^u,""u
 	.blkw 20
+
+.if nz frp
+frptmp:	0
+
+frptab:	.byte '/,' ,'e,247,'c,243
+	.byte '\,' ,'e,244,'a,241
+	.byte '^,' ,'i,250
+	0
+.endc
 
 .sbttl error messages and tables
 
@@ -703,67 +788,76 @@ foo=200
 ertab:	errdef ding		;just ring the bell
 	errdef noroom		;buffer full
 	errdef baderr		;shouldn't happen!!
-	errdef filerr		;file error
 	errdef undef		;underfined key or function
 	errdef serfai		;search failed
 	errdef badarg		;bad argument
+.if z rt11
 	errdef prtntr		;printer not ready
 	errdef prabor		;printer quit out
+	errdef filerr		;file error
+.endc
 
 ;table of filing errors
 
 .macro dferr c,text
 	c
-	.asciz /text/
+	.asciz &text&
 	.even
 .endm
 
 .if nz sits
 filert:
 eng <	dferr .efnf,<File not found>>
-fr  <	dferr .efnf,<N'ai pas trouve ce ficher>>
-	dferr .ebfn,<Bad file name>
-	dferr .ecdd,<Can't delete a non-empty directory>
+fr  <	dferr .efnf,<N'ai pas trouv/e ce fichier>>
+eng <	dferr .ebfn,<Bad file name>>
+fr  <	dferr .ebfn,<Mauvais nom de fichier>>
+eng <	dferr .ecdd,<Can't delete a non-empty directory>>
+fr  <	dferr .ecdd,<Fichiers encore pr/esents>>
 eng <	dferr .edfl,<Disk is full>>
-fr  <	dferr .edfl,<Le disque est rempli>>
-	dferr .edrf,<Directory full>
-	dferr .edske,<Disk error>
-	dferr .edvbe,<Bad disk error, check disk>
-	dferr 0,<Strange file error>
+fr  <	dferr .edfl,<Disque rempli>>
+eng <	dferr .edrf,<Directory full>>
+fr  <	dferr .edrf,<Trop des fichiers>>
+eng <	dferr .edske,<Disk error>>
+fr  <	dferr .edske,<Erreur du disque>>
+eng <	dferr .edvbe,<Bad disk error, check disk>>
+fr  <	dferr .edvbe,<V/erifier le disque>>
+eng <	dferr 0,<Strange file error>>
+fr  <	dferr 0,<Erreur /etrange du disque>>
 .endc ;nz sits
 
 bufful:
-eng <	.asciz /Memory full/>
-fr  <	.asciz /Memoire rempli/>
+eng <	.asciz &Memory full&>
+fr  <	.asciz &Memoire rempli&>
 bufnfl:
-eng <	.asciz /Memory almost full/>
-fr  <	.asciz /Memoire presque rempli/>
+eng <	.asciz &Memory almost full&>
+fr  <	.asciz &Memoire presque rempli&>
 serfms:
-eng <	.asciz /Search failed/>
-fr  <	.asciz /Search failed/>
+eng <	.asciz &Search failed&>
+fr  <	.asciz &Pas trouv/e&>
 badams:
-eng <	.asciz /Bad argument/>
-fr  <	.asciz /Bad argument/>
+eng <	.asciz &Bad argument&>
+fr  <	.asciz &Mauvais argument&>
 undfms:
-eng <	.asciz /Undefined function/>
-fr  <	.asciz /Undefined function/>
+eng <	.asciz &Undefined function&>
+fr  <	.asciz &Fonction inexistante&>
 prtnms:
-eng <	.asciz /Printer not ready/>
-fr  <	.asciz /Imprimante n'est pas pret/>
+eng <	.asciz &Printer not ready&>
+fr  <	.asciz &Imprimante n'est pas pret&>
 prstms:
-eng <	.asciz /Printer stopped/>
-fr  <	.asciz /Imprimante arette/>
+eng <	.asciz &Printer stopped&>
+fr  <	.asciz &Imprimante arette&>
 prpagm:
-eng <	.asciz /Next page/>
-fr  <	.asciz /Page suivant/>
+eng <	.asciz &Next page&>
+fr  <	.asciz &Page suivante&>
 prabms:
-eng <	.asciz /Printing aborted/>
-fr  <	.asciz /Printing aborted/>
+eng <	.asciz &Printing aborted&>
+fr  <	.asciz &Imprimerie avort/ee&>
 frblms:
-eng <	.asciz / free blocks on disk #/>
-fr  <	.asciz / free blocks on disk #/>
+eng <	.asciz & free blocks on disk #&>
+fr  <	.asciz & blocs libres sur le disque #&>
 	.even
 
+.if nz prtnum
 ;printing variables
 
 prpdle:	123456			;for debugging, to see if pdl overflew
@@ -865,18 +959,20 @@ prvpos:	0			;current vertical position on page
 prvhin:	0			;virtual horizontal incremtent for justifing
 prvhps:	0			;virtual hpos, used while justifing
 prvvps:	0			;virtual vertical position
+.endc ;nz prtnum
 
 .sbttl start the world
 zstart:	clr ran			;clear storage too
+.iif nz rt11!lsi, debug:
 start:	mov #pdl,p
-.iif nz lsi,	reset
+.iif nz lsi&sits,	reset
 	jsr pc,hinit		;hardware init as needed
 	tst ran			;don't clear storage if already started once
 	bne 1$			;also avoids reseting to defaults
 	jsr pc,sinit		;init the storage stuff
 	jsr pc,tabint		;set tab stops
 	jsr pc,reseta		;reset all defaults
-	mov pc,ran		;for the next time
+	mov p,ran		;for the next time
 1$:	jsr pc,ttyint		;init the tty
 	jsr pc,tertpi		;init the terminal type
 	jsr pc,@terint		;init the terminal
@@ -979,12 +1075,12 @@ cleanw:	mov curlin,d		;current line number
 ;the word free points to the head of this list
 
 ;definitions for all blocks
-bllink==0			;link word, code assumes this is zero
-bllen==2			;length word
-blused==4			;amount of space really used in the block
-blplen==6			;in lines, this is the print length, or zero if not known
-blhead==10			;header length
-bltiny==ilinsz+blhead		;never leave a free block around that is this small
+bllink=0			;link word, code assumes this is zero
+bllen=2				;length word
+blused=4			;amount of space really used in the block
+blplen=6			;in lines, this is the print length, or zero if not known
+blhead=10			;header length
+bltiny=ilinsz+blhead		;never leave a free block around that is this small
 ;a used block also has it's length not counting the header in
 ;the second word. The first word is currently free, maybe it will be
 ;a back pointer for use by the storage relocator
@@ -999,11 +1095,11 @@ sinit:	mov #zero,a		;the aread to be zeroed on fresh start
 	mov #<zeroe-zero>/2,b	;number of words to zero
 1$:	clr (a)+		;zero one
 	sob b,1$
-	mov #space,free		;make all space free
+	mov space,free		;make all space free
 	mov free,a
 	clr (a)+		;no link pointer
 	mov memtop,(a)		;compute amount of free space
-	sub #space,(a)
+	sub space,(a)
 	sub #100,(a)		;leave some for palying around
 	mov (a),a		;the free memory
 	ash #-3,a		;1/8th
@@ -1066,7 +1162,7 @@ getblk:	save <a,b,c>
 
 ;free the block pointed to by a
 freeb:	save <a,b,c,d>
-	cmp #space,a		;make sure this is a good block address
+	cmp space,a		;make sure this is a good block address
 	blos 1$		;yup
 	bpt			;somebody lost
 1$:	mov #free,b		;start of the free list
@@ -1125,7 +1221,7 @@ expand:	save <b,c,d,e>
 	blos 1$		;branch if he is asking for more
 	mov #blhead,b		;force that much
 1$:	mov a,c			;pointer to the block
-	cmp #space,a		;check for bugs
+	cmp space,a		;check for bugs
 	blos 2$			;don't try to expand block below real space
 	bpt
 2$:	add bllen(a),c		;pointer to the end of the block
@@ -1476,7 +1572,7 @@ redisl:	jsr f,acsav		;just in case
 	mov nscren(a),screen(a)	;this will be displayed
 	mov nscrls(a),screls(a)
 	mov nscrle(a),screle(a)
-	mov pc,screeb(a)	;this line is in the buffer
+	mov p,screeb(a)	;this line is in the buffer
 	mov #oline,e
 	mov #nline,f
 1$:	cmp e,2(p)		;at the end of the old line?
@@ -1516,12 +1612,12 @@ redisl:	jsr f,acsav		;just in case
 ;This routine prints a line into a buffer
 ;The line pointer is in e, the character position to start at is in d
 ;f points to the buffer to put the line into
-redprt:	save <a,b,c>
+redprt:	save <a,b,c,d>
 	mov numcar,a		;all lines are this long
 	cmp #blank,e		;is there a line to print?
-	beq 5$			;no, exit
+	beq 8$			;no, exit
 	tst e			;is the line garbage?
-	beq 6$			;yup, fill with garbage
+	beq 9$			;yup, fill with garbage
 
 1$:	save a
 	mov e,a
@@ -1534,24 +1630,35 @@ redprt:	save <a,b,c>
 	add d,e			;point to the first character to be displayed
 2$:	clr (f)
 3$:	cmp e,b			;at the end?
-	beq 5$			;exit
-	movb (e)+,(f)		;put the character in the line buffer
+	beq 8$			;exit
+	cmpb #11,(e)		;tab?
+	bne 5$			;nope
+4$:	mov #40,(f)+		;put in a space
+	dec a			;put in a char
+	beq 6$			;done the line
+	inc (p)			;the character pos
+	bit #7,(p)		;mult of 8?
+	bne 4$
+	br 2$
+
+5$:	movb (e)+,(f)		;put the character in the line buffer
+	inc (p)			;indicate one space taken
 	cmpb #atribc,(f)	;attributes?
-	blos 4$			;yup
+	blos 7$			;yup
 	tst (f)+		;next place
 	sob a,2$		;one more place taken
-	tst -(f)		;go back
+6$:	tst -(f)		;go back
 	mov #rgtchr,(f)+	;clobber to continue character
-	br 5$			;and return
-4$:	bisb (f),1(f)		;set in the bits
+	br 8$			;and return
+7$:	bisb (f),1(f)		;set in the bits
 	br 3$
 
-5$:	rest <c,b,a>
+8$:	rest <,c,b,a>
 	rts pc
 
-6$:	mov #-1,(f)+
-	sob a,6$
-	br 5$
+9$:	mov #-1,(f)+
+	sob a,9$
+	br 8$
 
 ;Display the character in c on the screen. Assume the cursor is positioned properly.
 dischr:	swab c
@@ -1694,9 +1801,15 @@ getlen:	save <e,f>
 	beq 4$			;none, zero length
 	add #blhead,a		;get to the data
 2$:	movb (a)+,c		;get a character
-	jsr pc,charsz		;get it's size
+	cmp #11,c		;tab?
+	bne 9$			;nope
+10$:	inc f
+	bit #7,f		;mult of 8?
+	bne 10$
+	br 11$
+9$:	jsr pc,charsz		;get it's size
 	add c,f			;add to the line length
-	sob e,2$
+11$:	sob e,2$
 	mov numcar,c		;number of characters on a line
 	dec c			;leave room for the continue character
 	cmp c,f			;is this line smaller than one line?
@@ -1744,7 +1857,7 @@ charsz:	cmpb #atribc,c		;is it an atribute character?
 getdps:	save <a,b,c,f>
 	clr -(p)		;counter
 	tst d			;zero?
-	beq 5$			;just return zero
+	beq 8$			;just return zero
 	asl a
 	add buffer,a
 	mov blhead(a),a
@@ -1752,7 +1865,7 @@ getdps:	save <a,b,c,f>
 	cmp d,blused(a)		;using the whole line?
 	bne 2$			;nope
 1$:	mov blplen(a),(p)	;using the whole line, just give the print length
-	bge 5$			;had a valid length
+	bge 8$			;had a valid length
 	save d
 	jsr pc,getlen		;to set blplen
 	rest d
@@ -1761,15 +1874,26 @@ getdps:	save <a,b,c,f>
 	mov numcar,f
 	dec f
 3$:	movb (a)+,c		;get a character
-	jsr pc,charsz		;get it's size
+	cmp #11,c		;tab?
+	bne 6$			;nope
+4$:	inc (p)
+	inc b
+	cmp f,b			;overflew?
+	bhi 5$
+	sub f,b
+	inc (p)
+5$:	bit #7,(p)		;multiple of 8?
+	beq 7$
+	br 4$
+6$:	jsr pc,charsz		;get it's size
 	add c,(p)		;count
 	add c,b			;count for this line
 	cmp f,b			;overflew a line?
-	bhi 4$			;nope
+	bhi 7$			;nope
 	sub f,b
 	inc (p)
-4$:	sob d,3$
-5$:	rest <d,f,c,b,a>
+7$:	sob d,3$
+8$:	rest <d,f,c,b,a>
 	rts pc
 
 ;Get character position. Given a screen character position in d and a line
@@ -1792,6 +1916,7 @@ getchp:	save <a,c,e,d>
 	tst d			;zero?
 	ble 3$			;just return count then
 	movb (a)+,c		;get a character
+.error **** work here!!
 	jsr pc,charsz		;how big is it?
 	sub c,d
 	br 2$
@@ -1859,12 +1984,59 @@ dstat:	jsr f,acsav
 	jsr f,acres
 dstatr:	rts pc
 
+;type an asciz string with htyo
+;pointer to string in b
+htype:	mov #htyo,pchr
+	br stype1
+
 ;special typeout routine for dstat
-stype:	movb (b)+,c		;get a character
+stype:	mov #stypec,pchr
+stype1:	movb (b)+,c		;get a character
 	beq 1$			;end of the item
-	jsr pc,stypec
-	br stype
+.if nz frp
+	jsr pc,frppre		;is it an accent prefix?
+	bne 2$			;nope
+	movb (b)+,c		;get the next character
+	jsr pc,frptrn		;translate
+2$:
+.endc
+	jsr pc,@pchr
+	br stype1
 1$:	rts pc
+
+.if nz frp
+frppre:	cmpb #'\,c
+	beq 3$
+	cmpb #'^,c
+	beq 3$
+	cmpb #'A,c		;is it puncuation?
+	blos 9$			;no, can't be in table
+3$:	save a
+	mov #frptab,a
+1$:	cmpb c,(a)+
+	beq 2$			;found one
+	tstb (a)+		;next
+	bne 1$
+	rest a
+9$:	clz
+	rts pc
+2$:	mov a,frptmp
+	rest a
+	sez
+	rts pc
+
+frptrn:	save a
+	mov frptmp,a
+1$:	tstb (a)+
+	beq 9$
+	cmpb (a)+,c
+	bne 1$
+	movb (a)+,c
+2$:	rest a
+	rts pc
+9$:	movb #'?,c
+	br 2$
+.endc
 
 stypec:	cmp dstcar,numcar	;at the end of the line?
 	beq 1$			;yup, don't type anything
@@ -1948,15 +2120,6 @@ tyostk:	mov (p),ttemp		;save return address
 	jsr pc,.tyo		;actually type the character
 	rest c
 	rts pc
-
-;put a character into the output buffer, flushing it if full
-.tyo:	movb c,@ttybfp		;put char into the tty buffer
-	inc ttybfp		;next spot
-	inc ttybfc		;one more character
-	cmp #ttybfl,ttybfc	;full?
-	bgt 1$			;not full yet
-	jsr pc,ttyfls		;full, flush it out
-1$:	rts pc
 
 ;like tyostk, but add 40 to the character first
 tyos40:	add #40,2(p)
@@ -2132,60 +2295,62 @@ c1seta:	save c
 ;printing characters (including accents). Overflowing of lines is
 ;not handled
 c1type:	cmp #15,c		;is it a carrige return?
-	beq 3$			;yup
+	beq 4$			;yup
 	cmp #12,c		;linefeed?
-	beq 4$
+	beq 5$
 	cmp #7,c		;bell?
-	beq 1$			;just type it
+	beq 2$			;just type it
 	inc carpos		;move one character pos
 	cmp numcar,carpos	;got to be off the screen?
-	bhi 1$			;nope
+	bhi 2$			;nope
 	clr carpos		;goes to zero
 	cmp rnmlin,rlinps	;on the last line?
 	beq 1$			;yes, don't inc
 	inc linpos		;down one line
 	inc rlinps
-	tyoesc #'S		;page mode so we don't get screwed on last line
-	jsr pc,1$		;call the rest as a subroutine
+	br 2$
+
+1$:	tyoesc #'S		;page mode so we don't get screwed on last line
+	jsr pc,2$		;call the rest as a subroutine
 	tyoesc #'s		;go out of page mode
 	rts pc
 
-1$:	bit #200,c		;special graphic (accent character)?
-	bne 5$			;yup
+2$:	bit #200,c		;special graphic (accent character)?
+	bne 6$			;yup
 	jsr pc,c1fnt0		;make sure we are in font zero
-2$:	jsr pc,.tyo		;nothing special, just output it
+3$:	jsr pc,.tyo		;nothing special, just output it
 	rts pc
 
-3$:	clr carpos		;return to zero
-	br 2$			;output the cr
+4$:	clr carpos		;return to zero
+	br 3$			;output the cr
 
-4$:	inc linpos		;down one line
+5$:	inc linpos		;down one line
 	inc rlinps
 	jsr pc,.tyo		;output the lf
 	rts pc
 
-5$:	save c
+6$:	save c
 	cmpb #300,c		;in the accent range?
-	blos 8$		;nope, some special
+	blos 9$		;nope, some special
 	bic #177600,c		;flush special bit
-6$:	jsr pc,c1fnt1		;make sure we are in font 1
-7$:	tyo40 c			;and type it normally
+7$:	jsr pc,c1fnt1		;make sure we are in font 1
+8$:	tyo40 c			;and type it normally
 	inc carpos
 	rest c
 	rts pc
 
-8$:	bne 9$			;if z is set, fixed space
+9$:	bne 10$			;if z is set, fixed space
 	tst fixspp		;print fixed spaces?
-	bne 9$			;yup, print it special
+	bne 10$			;yup, print it special
 	clr c			;so we output a space
 	jsr pc,c1fnt0		;in font zero
-	br 7$
-9$:	cmpb #310,c		;better be less than this
-	bhi 10$
+	br 8$
+10$:	cmpb #310,c		;better be less than this
+	bhi 11$
 	bpt			;who trie dto type that???
-10$:	bic #177770,c		;one of 8 specials
+11$:	bic #177770,c		;one of 8 specials
 	movb c1spcc(c),c	;translate
-	br 6$			;go type it
+	br 7$			;go type it
 
 ;make sure the terminal is set to font 0
 c1fnt0:	tst c1fnt		;is it zero?
@@ -2290,6 +2455,14 @@ tvtype:	cmp #15,c		;cr?
 	rts pc
 .endc	;tvs
 
+schtyi:				;temporary pending timesharing
+tyi:	mov rescan,a		;character to be rescaned?
+	bne 1$			;yup
+	jsr pc,rtyi		;do a real tyi
+	bic #177600,a		;flush to 7 bits
+1$:	clr rescan
+	rts pc
+
 .if nz sits
 .sbttl SITS i/o routines
 ;here are the sits i/o routines
@@ -2298,14 +2471,9 @@ ttyint:	save <,#.timgi!.timgo,#.ttmov*400+2>	;set status to image in, image out,
 	$invok
 	rts	pc
 
-schtyi:				;temporary pending timesharing
-tyi:	mov rescan,a		;character to be rescaned?
-	bne 1$			;yup
-	save #2			;the capability to the tty for input
+rtyi:	save #2			;the capability to the tty for input
 	$byti			;get a character
 	rest a			;pop it off the stack
-	bic #177600,a		;flush to 7 bits
-1$:	clr rescan
 	rts pc
 
 ;return with z set if no characaters are in the tty input buffer
@@ -2322,13 +2490,14 @@ tyip:	tst rescan		;is there a character to be rescaned?
 1$:	clz
 	rts pc
 
-;ring the terminal bell
-bell:	save c
-	mov #7,c
-	jsr pc,@typec
-	jsr pc,ttyfls		;make sure it gets out
-	rest c
-	rts pc
+;put a character into the output buffer, flushing it if full
+.tyo:	movb c,@ttybfp		;put char into the tty buffer
+	inc ttybfp		;next spot
+	inc ttybfc		;one more character
+	cmp #ttybfl,ttybfc	;full?
+	bgt 1$			;not full yet
+	jsr pc,ttyfls		;full, flush it out
+1$:	rts pc
 
 ;flush out the tty buffer
 ttyfls:	save <#ttybuf,ttybfc>
@@ -2343,13 +2512,13 @@ ttyfl2:	cmp (p)+,(p)+		;flush, nothing to output
 	br ttyfl1
 
 ;"hardware" init
-.if nz lsi&sits
+.if nz lsi
 hinit:	mov #lsitrp,lsitrv	;make sure traps trap to the right place
 	mov #100,lsrcs0		;turn on tty interupts
-	mov #smscle,smscsr	;and clock interrupts
+.iif nz smsdsk,	mov #smscle,smscsr	;and clock interrupts
 	save 4			;save whatever was there
 	mov #2$,4		;place to trap to
-	mov #space,a		;end of the world
+	mov space,a		;end of the world
 1$:	tst (a)+		;look for the end of memory
 	br 1$
 
@@ -2367,9 +2536,8 @@ hinit:	save <,#.timgo+.timgi,#2>
 
 ;special sits starting place for debugging
 ;not for lsi
-.if nz lsi
-debug=start
-.iff
+.if z lsi
+
 debug:	mov #pdl,p
 	save <#-1,#16,#.ttcap*400>	;create tty number 14.
 	.invok
@@ -2399,6 +2567,49 @@ speeds:	0
 
 .endc	;lsi
 .endc	;sits
+
+.if nz rt11
+hinit:	bis #jswspm!jswlc!jswntw,@#jsw	;set special mode, lower case, no wait state
+	bic #jswene,@#jsw	;turn off escape processing
+	.settop #-2		;get all memory
+	mov r0,memtop
+	rts pc
+
+.tyo:	save a
+	mov c,a
+	.ttyout
+	rest a
+	rts pc
+
+ttyfls:	rts pc			;for now all tty output is immediate
+
+ttyint:	rts pc			;hinit does tty init too
+
+rtyi:	mov tyisav,a		;is there a saved character?
+	bne 2$			;yup, use it
+	.ttyin			;get a character
+2$:	cmp #15,a		;is it a cr?
+	bne 1$			;nope
+	.ttyin			;flush the !%#$'$!! LF
+	mov #15,a		;restore the CR
+1$:	clr tyisav
+	rts pc
+
+tyip:	tst tyisav		;already got one?
+	bne 2$			;yup
+	save a			;otherwise known as r0
+	.ttinr			;chara available?
+	bcc 1$			;yup
+	rest a
+	sez
+	rts pc
+1$:	mov a,tyisav		;save the gd thing
+	rest a
+2$:	clz
+	rts pc
+
+.endc ;nz rt11
+
 
 .sbttl main loop and character dispatch
 mloop:	clr ctmtbt		;clear the control and meta bits
@@ -2493,14 +2704,16 @@ trpbrk:	rest <b,>		;get the pc
 	jmp @ertab(b)		;call the error routine
 
 erding:
-erbade:	jsr pc,updatf
+erbade:	jsr pc,dstat
+ercome:	jsr pc,updatf
 	jmp mloop		;and go back to main loop
 
 ;no room in buffer
 ernoro:	mov #bufful,erstat	;set an error into the status line
 	jsr pc,erdisp		;display the error
-	br erding		;return to main loop
+	br ercome		;return to main loop
 
+.if z rt11
 ;fileing error
 erfile:	jsr pc,glerr		;get last error code
 	mov #filert,b		;file error table
@@ -2513,10 +2726,11 @@ erfile:	jsr pc,glerr		;get last error code
 	inc b
 	bic #1,b		;do a .even
 	br 1$
+.endc
 
 berdis:	mov b,erstat		;this will be the error message
 	jsr pc,erdisp		;display it
-	br erding		;ding and return to top level
+	br ercome		;ding and return to top level
 
 erserf:	mov #serfms,b		;message
 	br berdis
@@ -2527,6 +2741,7 @@ erbada:	mov #badams,b
 erunde:	mov #undfms,b
 	br berdis
 
+.if nz prtnum
 erprtn:	mov #prtnms,b
 	br berdis
 
@@ -2534,6 +2749,7 @@ erprab:	jsr pc,clsprt
 	jsr pc,resprm		;restore printer modes
 	mov #prabms,b
 	br berdis
+.endc
 
 erdisp:	jsr pc,dstat		;display the change
 	clr erstat		;flush error message
@@ -2558,7 +2774,7 @@ crctbe=.
 .macro dk key,routine
 .=crctab+<key*2>
 .if ndf routine
-.error routine not defined
+.error ;routine not defined
 routine=chrund
 .endc
 	routine
@@ -2567,7 +2783,7 @@ routine=chrund
 .macro dkc key,routine
 .=crctab+<key*2>+400
 .if ndf routine
-.error routine not defined
+.error ;routine not defined
 routine=chrund
 .endc
 	routine
@@ -2576,7 +2792,7 @@ routine=chrund
 .macro dkm key,routine
 .=crctab+<key*2>+1000
 .if ndf routine
-.error routine not defined
+.error ;routine not defined
 routine=chrund
 .endc
 	routine
@@ -2585,7 +2801,7 @@ routine=chrund
 .macro dkcm key,routine
 .=crctab+<key*2>+1400
 .if ndf routine
-.error routine not defined
+.error ;routine not defined
 routine=chrund
 .endc
 	routine
@@ -2595,8 +2811,10 @@ routine=chrund
 .if df pass2			;no need to waste time on pass 1
 
 ;define all the normal keys
+foo=40
 .rept 95.
-	dk 40+.rpcnt,chrnrm
+	dk foo,chrnrm
+foo=foo+1
 .endr
 
 ;on c100, the following keys might get swapped in french mode:
@@ -2623,8 +2841,8 @@ routine=chrund
 ;special for debugging
 	dkm 1,chrlot		; esc control a inserts lots of characters
 	dkm 2,chrltl		;esc cntl-banother to insert lots of lines
-	dkm 3,die		;special for debugging, alt cntl-c dies
-	dk 14,scrclr		;for debugging, clear screen
+	dkm 54,die		;special for debugging, RESET dies
+	dk 53,scrclr		;for debugging, clear screen
 	dk 25,chrml4		;perverted argument
 
 ;function pad definitions
@@ -2639,18 +2857,22 @@ routine=chrund
 	dkm '[,chrscd		;scroll down
 	dkm '.,chrpag		;go to next page
 	dkm '-,chrpag		;on both page and shift page
+.if nz prtnum
 	dkm '{,chrprt		;print modes			(print)
 	dkm '|,chrspr		;set print modes		(shift print)
 	dkm '},chripr		;insert print command		(control print)
 	dkm '~,chrprj		;print memory			(control-shift print)
+.endc
 	dkm '],chrstt		;set tab
 	dkm '_,chrclt		;clear tab
 
 ;real function keys (the type preceeded by FS, whcih sets the control bit)
 	dkc '0,chrmod		;set entry modes		(insrt)
-	dkc ' ,chrecm		;extended commands		(INSRT)
+	dkc 40,chrecm		;extended commands		(INSRT)
+.if nz prtnum
 	dkc '1,chrprq		;stop print			(del char)
 	dkc '!,chrprc		;continue print			(DEL CHAR)
+.endc
 	dkc '2,chrshl		;complement shift lock		(insert line)
 	dkc ':,chrbld		;boldify			(f6)
 	dkc 73,chrser		;search				(f7)
@@ -3265,27 +3487,30 @@ tabso1:	mov c,b			;put it into an odd register
 tabdng:	ding
 
 ;go to the next tab stop
-chrtab:	jsr pc,tabsoc		;get the pointers
-3$:	inc c
+chrtab:	tst tabmod		;are we inserting tabs or fixed spaces?
+	beq 1$			;insert fixed spaces
+	jmp chrnrm		;insert normally
+1$:	jsr pc,tabsoc		;get the pointers
+2$:	inc c
 	jsr pc,tabso1
 	bitb bmt(b),(a)		;tab stop there?
-	beq 3$			;nope
+	beq 2$			;nope
 	mov d,f			;save pointer into buffer
 	mov c,e			;save our goal
 	cmp curlin,bufend	;are we on the first non-ex line?
-	beq 1$			;go insert spaces
-2$:	mov (f),a		;the current line
+	beq 4$			;go insert spaces
+3$:	mov (f),a		;the current line
 	mov e,d			;get the goal back
 	jsr pc,getchp		;get the character position
 	bne tabfnd		;got a good one
 	mov d,curcar		;set us as far as possible
-1$:	save c
+4$:	save c
 	mov #fixchr,c		;for inserting fixed space
 	sub buffer,f		;in case the buffer moves
 	jsr pc,inschr
 	add buffer,f
 	rest c
-	br 2$			;try again
+	br 3$			;try again
 tabfnd:	mov d,curcar
 	jmp invgol
 
@@ -3304,7 +3529,7 @@ chrbtb:	jsr pc,tabsoc		;get the current display pos
 
 ;reverse search
 chrrse:	mov #rsercp,prompt	;put up the prompt
-	mov pc,serdir		;reverse
+	mov p,serdir		;reverse
 	br chrse1
 
 ;search for string
@@ -3655,7 +3880,7 @@ lsent:	clr ttemp		;havn't found non-whitespace yet
 	beq 8$			;hit the beggining of a line
 	jsr pc,whitep
 	beq 3$			;yes
-4$:	mov pc,ttemp		;found something not whitespace
+4$:	mov p,ttemp		;found something not whitespace
 	br 1$			;keep looking for delimiters
 3$:	tst ttemp		;have we already found a non-whitespace?
 	beq 1$			;no, so skip this delimiter
@@ -3973,968 +4198,7 @@ kilbuf:	jsr f,acsav
 	rts pc
 
 
-.sbttl file routines
-chrfil:	mov #filep,a		;thing to prompt with
-	mov #filehl,e		;thing to prompt with if he delays 
-	jsr pc,dmenu		;do a standard menu thingy
-	rts pc
-
-
-;edit a file. Opens specicified file for reading and file> for writing
-fedit:	jsr pc,savef		;save any already open file(s)
-	jsr pc,grfile		;get a file to read
-	bne 1$			;Branch No Error
-	cmp #.efnf,a		;last error a file not found?
-	bne 2$			;yes, just blast ahead
-	jsr pc,wfile		;open file for writing
-	beq 2$			;error of some sort
-	br filext		;no error, exit with the file open
-
-1$:	jsr pc,kilbuf		;file open for read, kill old buffer
-	jsr pc,wfile
-	bne filecm
-	jsr pc,incls		;close the input too
-2$:	filerr			;and give error message
-
-;read a file. Opens a file for reading without opening one for writing.
-fread:	jsr pc,incls		;close previously open input file
-	jsr pc,grfile		;try to open a file for reading
-	bne filecm		;error opening?
-filer1:	filerr			;yes, give error message
-filecm:	jsr pc,chrpag		;read a page
-filext:	jsr pc,delcur		;no longer need the cap to the directory
-	clr prompt		;flush the old prompt
-	jsr pc,dstat		;and refresh the status line
-	rts pc
-
-;this is like insert only it first sets the cursor to the end of the buffer
-fappen:	mov bufend,curlin
-	clr curcar
-;fall into insert
-
-;like read only the first page of the file is inserted at the current cursor
-finsrt:	jsr pc,incls		;close previously open input file
-	jsr pc,grfile		;try to open a file for reading
-	beq filer1		;lose on error
-	jsr pc,readpg		;read the page
-	br filext
-
-
-;close the open file(s)
-fsave:	tst outcap		;anything open for write?
-	bne 1$			;yup, we have something to do
-	mov #savep,prompt	;special prompt
-	jsr pc,gwfile		;get a file to write
-1$:	jsr pc,savef		;close the input/output
-	jmp filext		;and clean up
-
-;close the open file(s)
-savef:	tst incap		;anything open for read?
-	beq 1$			;nope
-	tst outcap		;anything open for write?
-	beq 3$			;no
-	jsr pc,chrpag		;turn the page
-	br savef
-
-1$:	tst outcap		;anything open for write?
-	beq 3$			;nope
-	jsr pc,chrpag		;write out the page
-3$:	jsr pc,incls		;close any input
-	jsr pc,outcls		;and close any output
-	rts pc
-
-
-;just show the indeices
-sindex:	jsr pc,gfile		;this does it just fine
-	jmp filext		;do the normal file exit
-
-;create an index
-icreat:	jsr pc,gfile
-	beq 1$			;getting a file lost
-	jsr pc,copcur		;copy the curcap
-	save <,#string,a>
-	bis #.faad,(p)
-	.invok			;try to create the directory
-	beq 2$
-	save <#0,a>
-	.wrdo			;make file file 1 block long
-	beq 3$
-	save <,,a>
-	bis #.famd,(p)
-	.invok			;make into a dir
-	beq 3$
-	jsr pc,deldcp
-	jmp filext
-3$:	save <,,a>
-	bis #.fadl,(p)
-	.invok			;try to delete aborted file
-2$:	jsr pc,deldcp
-	jsr pc,delcur
-1$:	filerr
-
-.if nz lsi
-;Chain to a specified program
-fchain:	mov #maxstr,maxstl	;set up the max length
-	mov #-1,strtrc		;don't terminate on space
-	jsr pc,strge2		;gobble down string
-	tstb string		;test for non-null
-	bne 1$
-	badarg
-1$:	jsr pc,reseta		;reset the world
-	mov memtop,a		;top of memory
-	sub #1000,a		;random place
-	mov a,f			;for the new pdl pointer
-	tst -(f)
-	mov a,@memtop		;store pointer
-	mov #string,b		;file to boot
-2$:	movb (b)+,c
-	jsr pc,upcase
-	movb c,(a)+
-	bne 2$
-	jmp 173002		;go to the hardware boot
-.endc
-
-;open a file for reading
-grfile:	mov #inname,defstr	;set the default
-	jsr pc,rfile
-	beq 1$
-	mov tmpcap,incap
-	clr tmpcap
-	mov incap,a
-	mov #inname,b
-	jsr pc,getfnm		;get the real file name
-	mov #inflag,filein	;set the flag for the status line
-	clr dibufp		;set the buffer pointer
-	clr dibufe		;and end of buffer pointer 
-	jmp filext
-
-1$:	rts pc
-
-;Open a file for reading on tmpcap
-rfile:	jsr pc,gfile		;get the file name
-	beq 1$			;lost somehow
-	mov #string,a		;the file name string
-	mov #tmpnam,b		;copy it
-3$:	movb (a)+,(b)+
-	bne 3$
-	jsr pc,copcur
-	beq 1$			;something went wrong
-	mov a,tmpcap
-	save <#0,#tmpnam,tmpcap>
-	bis #.famu,(p)		;to mutate to file
-	.invok
-	beq 2$			;error
-	mov tmpcap,a
-	jsr pc,dirchk		;did we get a directory?
-	bne 1$			;yup, lose
-	clz
-	rts pc
-
-2$:	add #6,p		;flush invoke args
-1$:	jsr pc,tmpfls
-	jsr pc,glerr		;get the last error code
-	sez			;lose, indicate error to next level up
-	rts pc
-
-;come here on a quit
-flscqu:	jsr pc,delcur		;flush the current directory
-	jmp chrqui		;and quit out normally
-
-;delete a directory
-ddelet:	mov pc,ftemp		;special flag for gfile
-	jsr pc,gfilen		;get the file name
-	br fdele1		;go do a delete
-
-;delete a file
-fdelet:	jsr pc,gfile		;get a file
-fdele1:	beq 1$			;lost somehow
-	jsr pc,copcur
-	beq 1$			;something went wrong
-	save <#0,#string,a>
-	bis #.famu,(p)		;to mutate to file
-	.invok
-	beq 2$			;error
-	save <,,a>
-	mov #deletp,prompt	;set up the query prompt
-	jsr pc,dstat
-	jsr pc,mgetyn		;get a yes or no answer
-	clr prompt
-	jsr pc,dstat		;flush prompt
-	tst c			;c is non-zero for yes
-	beq 2$			;no, quit
-	bis #.fadl,(p)		;to delete the file
-	.invok
-	beq 2$			;lost
-	jsr pc,deldcp		;delete the copy
-	rts pc
-
-2$:	jsr pc,deldcp		;delete the copied cap
-1$:	jsr pc,delcur
-	filerr
-
-;turn a page: write out the current page if a file is open and read in
-;the next page 
-chrpag:	tst outcap		;output file?
-	beq 1$
-	jsr pc,writpg		;write out the current buffer
-	jsr pc,kilbuf		;kill the old buffer
-	tst incap		;anything to input from?
-	beq 4$			;nope, done
-1$:	tst incap		;input file?
-	beq 3$			;nope
-2$:	jsr pc,kilbuf		;make sure it's dead
-	jsr pc,readpg		;read in the page
-	clr curlin		;set the cursor
-	clr curcar		;to the top of the buffer
-	clr goalcl
-4$:	rts pc
-3$:	ding
-
-;read a page in from the disk starting at the end of the buffer
-readpg:	cmp bufend,curlin	;are we exactly at the end of the buffer?
-	beq readpf		;yes, do it the fast way
-1$:	jsr pc,readc		;read a character
-	beq 3$			;end of file
-	cmpb #40,c		;regular character?
-	bhi 2$			;nope, control
-	jsr pc,inschr		;insert character into the buffer
-	br 1$
-
-2$:	cmp #14,c		;end of page character?
-	beq 3$			;yup
-	cmp #15,c		;carrige return?
-	beq 4$			;yes, end th eline
-	br 1$			;for now, ignore all other controls
-
-3$:	rts pc			;done
-
-4$:	mov #chrcr,f		;carrige return
-	jsr pc,skeycl
-	br 1$
-
-;read the page in to the end of the buffer fast
-readpf:	mov buffer,a		;pointer to the buffer
-	cmp blused(a),bllen(a)	;is it all used up?
-	blo 1$			;nope
-	mov #bufinc,b		;amount to expand by
-	jsr pc,expand		;try to expand the buffer
-	beq readpn		;buffer full
-	mov a,buffer		;new buffer
-1$:	mov a,b			;copy buffer pointer
-	mov #500,a		;huge line
-	mov a,f			;counter
-	jsr pc,getblk		;get a block of storage
-	beq readpn		;no more room
-	mov curlin,d		;current line number
-	asl d
-	add buffer,d
-	add #blhead,d
-	inc curlin		;move cursor down past this line
-	inc bufend		;one more line in buffer
-	add #2,blused(b)	;one more line in buffer
-3$:	mov a,(d)		;put the new line into the buffer
-	mov a,b			;copy the pointer to the line
-	add #blhead,b		;get a pointer to the data
-	add blused(a),b		;in case we get back here
-2$:	jsr pc,readc		;read a character from the file
-	beq 4$			;done
-	cmpb #40,c		;control?
-	bhi 5$			;yup
-	movb c,(b)+		;put the char into the line
-	inc blused(a)		;one more in the line
-	sob f,2$		;keep reading
-	mov #500,b		;amount to expand
-	mov b,f
-	jsr pc,expand
-	beq readpn		;no space left
-	br 3$
-
-4$:	mov #blhead,f		;need at least enough for a header
-	jsr pc,shrink		;shrink the last line
-	rts pc
-
-5$:	cmpb #15,c		;end of line?
-	beq 6$			;yup
-	cmpb #14,c		;end of page?
-	beq 4$			;yup, done
-	br 2$			;ignore any other control char
-
-6$:	mov #blhead,f		;allow only enough for a header
-	jsr pc,shrink		;lop off any extra
-	br readpf		;continue reading
-
-readpn:	noroom			;no room left
-
-;read a character form the input buffer. If the buffer is empty, read a new buffer
-;if the end of file is reached, return with z set
-readc:	cmp dibufp,dibufe	;at the end of the buffer?
-	beq 1$			;yes, read new block
-	movb @dibufp,c		;get a character from the buffer
-	inc dibufp
-	rts pc
-
-1$:	mov #dibuf,dibufp	;reset input pointer
-	save <#dibuf,#-dbufl,incap>
-	.blki
-	bne 2$			;win, read in the whole block
-	cmp (p)+,(p)+		;flush top two args
-	rest dibufe		;new end of buffer
-	cmp #dibuf,dibufe	;did we read in anything?
-	bne readc		;go read a character
-	jsr pc,incls		;close file
-	sez
-	rts pc			;end of file, return with z set
-
-2$:	mov #dibuf+dbufl,dibufe	;set the new end pointer
-	br readc		;and go read a character
-
-;open a file for writing, requesting the file name in the usual manner
-gwfile:	mov #outnam,defstr	;set up the defualt
-	jsr pc,gfile
-	beq wfile9		;something went wrong
-	mov #string,a
-	mov #outnam,b
-1$:	movb (a)+,(b)+
-	bne 1$
-	br wfile1
-
-;open a file for writeing
-;a the moment this just takes the input file name, tacks a > on the end
-;if it lacks one, and creates the file
-;obviously, more hair than that is needed
-wfile:	mov #inname,a		;pointer to the input name
-	mov #outnam,b		;pointer to the output name
-2$:	movb (a)+,(b)+		;copy the name
-	bne 2$
-wfile1:	jsr pc,outcls		;close any output file already open
-	clr writen		;nothing written in the new file
-	jsr pc,copcur
-	beq wfile9		;something went wrong
-	mov a,outcap		;this will become the output cap
-	mov #outnam,b
-2$:	cmpb #'#,(b)		;start of version #?
-	beq 3$
-	cmpb #'>,(b)		;already has a > ?
-	beq 3$			;yes, terminate name
-	tstb (b)+		;at end of name?
-	bne 2$
-	dec b
-3$:	movb #'>,(b)+		;put the > onto the end
-	clrb (b)+
-	save <#0,#outnam,outcap>
-	bis #.faad,(p)		;want ot create a new file
-	.invok
-	beq 10$			;lost
-	mov outcap,a
-	mov #outnam,b
-	jsr pc,getfnm		;get the real file name
-	mov #outflg,filout	;set the falg for the status line
-	br wrtbu1		;reset pointers
-
-10$:	add #6,p
-	jsr pc,outcls		;close the aborted output file
-1$:
-wfile9:	jsr pc,glerr		;get the reason for failure
-	sez
-	rts pc
-
-;write out the contents of the disk output buffer to the outcap
-wrtbuf:	save <#dobuf,#dobuf>
-	sub dobufp,(p)		;giving negative character count
-	save outcap
-	mov #dobuf,dobufp	;reset pointer
-	.blko
-	bne wrtbu1		;no error
-	jsr pc,outcls		;flush the cap
-	filerr
-wrtbu1:	mov #dobuf,dobufp	;reset pointer
-	clz
-	rts pc
-
-;write a character into the output buffer and output it if full
-writec:	movb c,@dobufp		;put a character in the buffer
-	inc dobufp		;move the pointer
-	cmp #dobuf+dbufl,dobufp	;at the end?
-	blos wrtbuf		;yup, write the buffer
-	rts pc
-
-;write out the current buffer to the file
-writpg:	jsr f,acsav
-	mov bufend,f		;the count of lines in the buffer
-	beq 9$			;zero, don't output anything
-	mov buffer,a		;pointer into buffer
-	add #blhead,a
-	cmp #1,f		;only one line?
-	bne 1$			;nope, more than that
-	mov (a),b		;get the line
-	tst bllen(b)		;anything there?
-	beq 9$			;nope, don't output anything
-1$:	tst writen		;anything writen before?
-	beq 5$			;nope
-	mov #14,c		;form feed
-	jsr pc,writec		;before the new stuff
-5$:	mov (a)+,b		;get a line
-	add #blhead,b		;pointer to the data
-	mov blused-blhead(b),d	;count of chars on the line
-	beq 3$			;none
-2$:	movb (b)+,c		;get a character
-	jsr pc,writec		;output it to the file
-	sob d,2$		;for as many as are on the line
-3$:	movb #15,c		;carrige return
-	jsr pc,writec
-	sob f,5$
-	mov pc,writen		;something was writen
-9$:	jsr f,acres
-	rts pc
-;get a SITS file name. If the user types the name of an existing directory
-;we mutate down to it, otherwise we exit
-;read from the TTY into the status line in the normal fashion. If the
-;name is an index the path is updated and another name read.
-;if the name is the no character the last index is flushed
-;if too much delay happens the directory is displayed
-;if a name is the scroll up or down characters the directory display is
-;scrolled.
-gfile:	clr ftemp		;do the normal mutate down directories thing
-gfilen:	mov #flscqu,quitrt	;set up the quit routine
-	jsr pc,getcur		;try to set up the current directory
-	beq gfile3		;no current directory possible, ask for disk number
-gfile4:	mov #60.,f		;time to wait before displaying dir
-	clr strdir		;start directory at the top
-gfile1:	clr dirend		;say that it is zero lenght
-	mov #dirdis,e		;routine to call if things get too dull waiting for the user
-gfile2:	mov #maxfnm,maxstl	;set the max string length
-	jsr pc,strget		;get a string
-	cmp #40,a		;terminated with space?
-	beq 2$			;yup, gobble that directory
-	cmp #15,a		;return?
-	beq 2$			;likewise
-	jsr pc,getnam		;get the name of the key
-	cmp #chrno,f		;"no"?
-	beq gfileb		;back up one name
-	cmp #chrscd,f		;scroll down?
-	beq gfiled		;scroll directory display down
-	cmp #chrscu,f		;scroll up?
-	beq gfileu		;scroll directory display back up
-	mov a,rescan		;to re-read
-	ding
-
-2$:	jsr pc,copcur		;copy it
-	mov #string,b		;the place where the string is
-	jsr pc,upstrn		;upper case the string
-	tst ftemp		;check the flag
-	bne 4$			;don't mutate if set
-	save <#0,#string,a>	;now mutate the copy
-	bis #.famu,(p)
-	.invok
-	beq 3$			;mutate failed
-	jsr pc,dirchk		;is the new thing a directory?
-	beq 4$			;nope, return with file
-	jsr pc,delcur		;get rid of the old current thing
-	mov a,curcap		;and replace it with the new one
-	mov #curnam,b		;current path
-	mov #string,c		;thing to add to path
-5$:	tstb (b)+		;find the end of the current dir name
-	bne 5$
-	tstb -(b)		;now we point at the zero
-	cmpb #40,-1(b)		;is there a separator?
-	beq 6$			;yup
-	movb #40,(b)+		;add one
-6$:	movb (c)+,(b)+		;add new thing
-	bne 6$			;until we run off the end
-	jmp gfile4		;go get next thing
-
-3$:	add #6,p		;flush mutate args
-4$:	jsr pc,deldcp		;delete the copied cap
-	rts pc			;and return
-
-;no current disk, get a disk number
-gfile3:	save prompt		;save the old prompt
-	mov #disknp,prompt	;prompt for disk number
-	clr e			;no other prompt
-	clr f			;instantly
-1$:	mov #1,maxstl		;one character disk number
-	jsr pc,strget		;go get the disk number
-	jsr pc,quread		;quit on illegal terminator
-	tstb string+1		;single character?
-	bne 2$			;ding and try again
-	movb string,a		;get the single character
-	sub #'0,a		;better be a number
-	cmp #4,a		;better be less than 4
-	blos 2$			;nope
-	mov a,curdsk		;this will be the new disk
-	rest prompt		;restore prompt
-	br gfile		;once more, with feeling
-
-2$:	jsr pc,bell		;ding!
-	br 1$
-
-;scrol the directory display down
-gfiled:	mov numlin,a		;total lines on the screen
-	sub #4,a		;status+path+2 for continutiy
-	add strdir,a		;get the new starting place
-	cmp dirend,a		;is the new start after the old end?
-	blos gfile2		;yup, don't move the start
-	mov a,strdir		;new start
-	clr f			;redisplay immediately
-	br gfile1
-
-;scrol the directory display up
-gfileu:	mov numlin,a		;total lines on the screen
-	sub #4,a		;status+path+2
-	clr f			;immediate redisplay
-	sub a,strdir		;go back that many
-	bge gfile1		;did we go off the top?
-	jmp gfile4		;set to top of dir
-
-gfileb:	jsr pc,delcur		;flush the current thing
-	mov #curnam,b		;the current name string
-1$:	tstb (b)+		;find the end
-	bne 1$
-	dec b			;go back to last valid char
-5$:	cmp #curnam,b		;zero string?
-	beq 2$			;flush curdsk
-	cmpb #40,-(b)		;any spaces on the end?
-	beq 5$
-3$:	cmpb #40,-(b)		;look back for separator
-	beq 4$			;found one
-	cmp #curnam,b		;back to beg?
-	bne 3$			;not yet
-4$:	clrb (b)		;new termination
-	jmp gfile		;start from stracth
-
-2$:	mov #-1,curdsk		;flush current disk
-	clr curnam
-	jmp gfile
-
-
-
-
-;display the current disk directory on the screen
-;the top line is the path used to get to the current directory
-;the rest of the display is the directory contents, starting
-;with the entry number strdir and ending either at the end of
-;the directory or at the end of the screen
-dirdis:	jsr f,acsav
-	jsr pc,scrfls		;we will clobber the whole screen
-	clr a
-	clr b
-	jsr pc,babsps		;put ourselves at zero, zero display area
-	mov curdsk,d		;disk number
-	blt 20$			;none, just a blank line
-	mov #'(,c
-	jsr pc,htyo		;want to type N(DISKNAME) PATH
-	mov #dname,b		;disk name
-	jsr pc,htype		;type the disk name
-	mov #'),c
-	jsr pc,htyo
-	jsr pc,.space
-	mov #curnam,b		;current path
-	jsr pc,htype
-3$:	jsr pc,.space		;space out
-	cmp #40.,carpos		;to 40
-	bhi 3$
-	save <,,curcap>
-	bis #.fadi,(p)		;get the disk info
-	$invok
-	rest d			;free blocks
-	jsr pc,prdn		;print
-	mov #frblms,b		; free blocks on disk 
-	jsr pc,htype
-	rest d
-	jsr pc,prdn
-	jsr pc,.crlf
-;now actually type the directory
-	jsr pc,poentb		;set access to zero and get entry
-	mov strdir,a		;entry to start with
-	mov strdir,dirend	;the end is at least past the start
-9$:	jsr pc,poenti		;the parent entry, first time
-	dec a			;got the ones that were on the previous screen?
-	bgt 9$			;not yet
-1$:	mov linpos,a		;current line
-	add #2,a		;plus two
-	cmp a,numlin		;about to overflow screen?
-	bhi 5$			;yup, quit
-	jsr pc,poenti		;input an entry
-	bne 4$			;ok, got an entry
-5$:	jsr pc,@eosclr		;clear to the end of the screen
-	jsr pc,ttyfls
-	jsr f,acres
-	rts pc
-
-4$:	movb entry+1,f		;get type byte
-	bic #177761,f		;get type field
-
-	jmp @2$(f)		;dispatch to service routine
-
-2$:	1$			;parent entry
-	10$			;directory
-	11$			;file
-	1$			;not implemented
-	1$			;self entry
-	1$			;link (unimplemented)
-	1$			;unimplemented
-	1$			;unimplemented
-
-
-10$:	inc dirend		;one more line on the screen
-	mov #'I,c
-	jsr pc,htyo
-	jsr pc,.space
-	mov #-1,e
-	jsr pc,podiri		;print name,version, and size
-	br 1$			;do the next entry
-
-11$:	inc dirend		;one more line on the screen
-	jsr pc,.space
-	jsr pc,.space
-	jsr pc,podirn
-	br 1$
-
-20$:	jsr pc,.crlf
-	jsr f,acres
-	rts pc
-
-poset:	save <d,#0,curcap>
-	bis #.fasp,(p)
-	$invok
-	rts pc
-
-poentb:	clr d					;set to beggining of dir
-	jsr pc,poset
-
-poenti:	save e
-	save <#entry,#-4,curcap>
-	.blki			;input the header word and vern #
-	bne 2$
-3$:	add #6,p
-	rest e
-	sez
-	rts pc
-2$:	mov #tvern+2,e		;where the rest of the thing goes
-	mov entry,f		;header word
-	blt 1$			;skip if eof, time+ date exist
-	mov #enname,e		;not date+time, rest of entry goes here
-	clr date
-1$:	inc f
-	bic #177401,f		;size of this entry
-	add f,d
-	save e
-	sub #4,f		;already read this much
-	neg f
-	save <f,curcap>
-	sub f,e			;get the end address of the buffer
-	sub #entend,e
-	ble 4$			;there is room for all of it
-	add e,2(p)		;can only read part of it in
-4$:	.blki			;input the header word and vern #
-	beq 3$			;disk error
-	tst e			;did we read it all in?
-	ble 5$			;yup
-	jsr pc,poset
-5$:	rest e
-	clz
-	rts pc
-
-				;print out a line of information about file
-				;(c)= points to entry to print
-				;save registers a,b,d
-
-podirn:	mov enteof,f
-	add #1777,f		;round up to block boundary
-	clr e			;clear high part
-	ashc #3,e
-	add entefh,e		;page number
-	ashc #3,e		;now legnth in blocks
-podiri:	save <a,d,e>		;save legnth and version number
-	mov #enname,e
-2$:	movb (e),c
-	bic #177600,c		;clear top bit of byte
-	cmpb #'#,c
-	beq 8$
-	cmpb #'",c
-	beq 8$
-	cmpb #'>,c
-	beq 8$
-	cmpb #'<,c
-	bne 9$
-8$:	mov #'",c
-	jsr pc,htyo
-	movb (e),c
-9$:	jsr pc,htyo		;print a character
-	tstb (e)+		;last byte has 200 bit set
-	bpl 2$
-	mov tvern,d
-	blt 3$			;no version number
-	mov #'#,c
-	jsr pc,htyo
-	jsr pc,prdn		;print the version number
-3$:	rest <d>		;print the block legnth
-	blt 1$
-	jsr pc,.space
-	jsr pc,.space
-	jsr pc,prdn
-1$:	jsr pc,prdat
-	jsr pc,.crlf
-	rest <d,a>
-	rts pc			;done with this entry
-
-
-				;prdat prints date & time, if any
-prdat:	jsr f,acsav		;save all registers  
-.if z 105
-	jsr pc,.tab
-	mov date,e		;put date in e 
-	beq 5$			;if no date & time, return
-	cmp #-1,e		;see if initialized
-	bne prdat1		;go on if initialized
-.endc
-	jsr pc,.space
-	mov #'-,c		;print " -" if not
-	jsr pc,htyo
-5$:	jsr f,acres		;restore all registers
-	rts pc
-
-.if z 105			;control instructions for prdat2
-prdat1:	mov #dttab,b		;point to beg. of dttab	
-	jsr pc,prdat2		;print date in e
-	mov time, e		;put time in e				
-	jsr pc,prdat2		;print time
-	jsr f,acres		;restore all registers
-	rts pc
-
-				;table driven routine to print date & time segment by segment
-				;ztype & prdn take argument in a 
-prdat2:	mov #3,d		;d is loop index
-prdat3:	mov e,a			;put date or time in a
-	ash (b)+,a		;shift quantity to low byte
-	bic (b)+,a		;zap all but relevant bits
-	ash (b)+,a		;mult. factor: 0 except for sec/2
-	cmp #3,d		;first time thru loop?
-	beq 1$				
-	jsr pc,zprdn		;print with leading 0 if < 10
-	br 2$
-1$:	jsr pc,prdn		;print without leading 0 if < 10	
-2$:	mov (b)+,a		;pick up delimiter character
-	mov a,c			;put character in d
-	jsr pc,htyo		;print character
-	sob c,prdat3		;do next segment
-prdat4:	rts pc
-
-.endc
-
-.space:	save c
-	mov #40,c
-	jsr pc,htyo
-	rest c
-	rts pc
-
-.tab:	jsr pc,.space
-	bit #7,curcar
-	bne .tab
-	rts pc
-
-.crlf:	save c
-	mov #15,c
-	jsr pc,htyo
-	rest c
-	rts pc
-
-
-.sbttl low level SITS file routines
-
-;make sure that curcap is set up with a capability to the current directory
-getcur:	tst curcap		;is it already non-zero?
-	bne 1$			;yup, nothing to do
-	jsr pc,getrot		;get the current root, copy it to curcap
-	beq 2$			;none, have to ask about a root disk
-	save <#0,#curnam,curcap>
-	bis #.famu,(p)		;want to get back to the current directory
-	.invok			;mutate
-	bne 1$			;succesful
-	rest <,a,>		;get back the pointer to how far it went
-	clrb (a)		;this is the new current name
-1$:	clz
-	rts pc
-
-2$:	sez			;failed to get a cap
-	rts pc
-
-;return a copy of the current disk root in curcap
-;set z if there is no current disk, or if we can make a root for it
-getrot:	mov curdsk,a		;get the current disk number
-	blt 8$			;no current disk
-	jsr pc,crtrot		;try to get a root
-	beq 8$			;can't
-	mov b,a
-	jsr pc,copcap		;copy it
-	beq 8$			;failed for some reason
-	mov a,curcap
-	mov #dname,b		;the name of the disk
-	jsr pc,getfnm		;get from the capability
-	clz
-	rts pc			;return with z clear
-
-8$:	sez
-	rts pc
-
-;try to return a root cap to the disk in a
-;cap is returned in b
-crtrot:	asl a
-.if nz lsi			;this stuff only on the lsi
-	tst rotcps(a)
-	bne 3$			;already got one
-	mov a,ttemp		;set up the block for the create
-	bis #.farut,ttemp	;say we want to create a root
-	save <#-1,#ttemp,#.facap*400+0>
-	.invok			;try to create a root cap
-	bne 1$			;success
-2$:	add #6,p
-	save rotcps(a)
-	clr rotcps(a)
-	rest a
-	jsr pc,deldcp
-	jsr pc,delcur
-	sez
-	rts pc
-1$:	mov (p),rotcps(a)		;and the table of caps
-	save a
-	mov 2(p),a
-	jsr pc,copcap		;copy root to curcap
-	mov a,b
-	rest <a,>
-	save <#0,#bits,b>	;want to get the bits file
-	bis #.famu,(p)		;mutate to it
-	.invok
-	beq 4$			;!!! no bits file, lose
-	save <,,b>		;tell LSITS this is the bits file
-	bis #.famb,(p)		;this is the bit table
-	.invok
-	bne 5$			;got the bit table
-4$:	save a
-	mov b,a
-	jsr pc,deldcp		;flush the bit table cap
-	rest a
-	br 2$
-5$:	mov #2,rotref(a)		;so it doesn't go away
-	save a
-	mov b,a
-	jsr pc,deldcp		;flush the bit table cap
-	rest a
-	clr rotref(a)		;no caps but the root
-.endc
-3$:	mov rotcps(a),b
-	clz
-	rts pc
-
-;get the name of the file on cap in a and copy it to string area in b
-getfnm:	save <#filblk,#filbll,a>
-	bis #.fari,(p)		;read information
-	$invok
-	mov #filnam,a		;copy the name
-1$:	movb (a)+,(b)+
-	bne 1$
-	rts pc
-
-;make a copy of curcap
-copcur:	mov curcap,a
-;fall in to copcap
-
-;copy the disk capability in a, return new cap in a, set z if failed
-copcap:	save <#-1,,a>
-	bis #.cpycp,(p)		;copy the cap
-	.invok
-	beq 1$			;lost somehow
-	rest a			;this is the new cap
-	save <,,a>		;we want to get the disk number
-	bis #.fadi,(p)
-	$invok
-	tst (p)+		;free block count
-	asl (p)			;make a word index
-	add #rotref,(p)		;we want to keep the reference count
-	inc @(p)+		;up to date
-	clz
-	rts pc
-
-1$:	sez
-	rts pc
-
-;delete the temp cap
-tmpfls:	mov tmpcap,a
-	br incls1
-	
-;close the input channel
-incls:	mov incap,a		;delete the input capability
-	clr incap		;clear the capability
-	clr filein		;clear the status line
-incls1:	jsr pc,deldcp
-	rts pc
-
-;close the output channel
-outcls:	tst outcap		;anything to close?
-	beq 1$			;nope
-	tst writen		;anything written?
-	bne 2$			;yup
-	save <,,outcap>
-	bis #.fadl,(p)		;rather than leave an empty file, delete it
-	.invok
-	bne 3$			;no error, ok
-	filerr			;give error message
-2$:	jsr pc,wrtbuf		;output the buffer
-3$:	mov outcap,a
-	jsr pc,deldcp
-	clr outcap
-	clr filout		;for the status line
-1$:	rts pc
-
-;delete the currrent directory cap
-delcur:	save a
-	mov curcap,a
-	jsr pc,deldcp
-	clr curcap
-	rest a
-	rts pc
-
-;delete the disk capability in a
-deldcp:	tst a			;anything there?
-	beq 1$			;nope, just return
-	save <,,a>		;we want to get the disk number
-	bis #.fadi,(p)
-	$invok
-	tst (p)+		;free block count
-				;disk number is left on the stack
-	jsr pc,delcap		;actually delet ethe cap
-	rest a
-	asl a			;make a word index
-	dec rotref(a)		;update the reference count
-.ifnz lsi
-	bne 1$			;not zero, do nothing
-	save rotcps(a)
-	clr rotcps(a)
-	rest a
-	jsr pc,deldcp		;delete the cap
-.endc ;lsi
-1$:	rts pc
-
-;delete the cap in a
-delcap:	save <,,a>
-	bis #.delcp,(p)
-	$invok
-	rts pc
-
-;see if the cap in a is to a file or a directory
-dirchk:	save <#filblk,#10,a>
-	bis #.fari,(p)
-	$invok			;find out if we've opened a file or a directory
-	bit #.fadir,filblk+2	;well, which?
-	rts pc
-
-;get last error
-glerr:	.gerrw
-	beq 1$
-	rest <,eword>
-1$:	mov eword,a
-	rts pc
-
+.iif z rt11, .insrt tnfile >
 .sbttl mode and command stuff
 ;set entry modes
 chrmod:	mov #modep,a		;entry mode prompt
@@ -4946,33 +4210,7 @@ chrmo1:	jsr pc,dmenu		;display it and gobble down the settings
 chrecm:	mov #excmdp,a		;extended command prompt
 	mov #excmdm,e		;extended command menu
 	br chrmo1
-
-;print commands (first level)
-chrprt:	mov #printp,a		;printer prompt
-	mov #printm,e		;printer menu
-	br chrmo1
-
-;print modes
-setpmd:
-chrspr:	mov #setpmp,a		;set print modes prompt
-	jsr pc,setpm1		;do a gobble of a set command
-	br setpmd		;do until quit out of
-
-setpm1:	mov #prtmdm,e
-	mov #1,prtspc
-setpm2:	jsr pc,dmenu1
-	rts pc
-
-;insert printer commands
-inspcm:	mov prompt,a
-inspc1:	mov #prtmdm,e
-	mov #-1,prtspc		;use only the insertable commands
-	br setpm2
-
-chripr:	mov #inspmp,a		;set the prompt
-	br inspc1
-
-
+.iif z rt11,.insrt tnprin >
 
 .sbttl menu routines
 ;read a sting in the status line and do completion for the menu in e
@@ -5024,22 +4262,39 @@ mmenu:	save <e,f>
 	clr b			;this is the menu item we've found that matches
 1$:	mov #string,c
 	tst (a)
-	beq 14$			;off the end of the menu
+	beq 18$			;off the end of the menu
 	add #menuoh,a		;go to the string part by adding in the overhead
 	cmp #menuti,menufl-menuoh(a)	;is this just a title line?
-	beq 6$			;yup, skip it
+	beq 8$			;yup, skip it
 	tst prtspc		;special?
 	beq 4$			;nope
 	blt 2$			;if < 0 do only insert commands
 	bit #menuio,-menuoh(a)	;is it insert only?
-	bne 6$			;yup, ignore
+	bne 8$			;yup, ignore
 	br 4$
 2$:	tst menuir-menuoh(a)	;is there a an insert routine?
-3$:	beq 6$			;nope, skip it
+3$:	beq 8$			;nope, skip it
 4$:	save a
 5$:	movb (a)+,e		;get a character
+.if nz frp
+	save c
+	mov e,c
+	jsr pc,frppre
+	bne 6$
+	movb (a)+,e
+6$:	rest c
+.endc
 	movb (c)+,f		;get one from the user's string
-	beq 7$			;end of user's string
+	beq 9$			;end of user's string
+.if nz frp
+	save c
+	mov f,c
+	jsr pc,frppre
+	bne 7$
+	movb @(p),f
+	inc (p)
+7$:	rest c
+.endc
 	sub e,f			;difference
 	beq 5$			;equal so far
 	cmp #40,f		;difference only in case?
@@ -5047,75 +4302,117 @@ mmenu:	save <e,f>
 	cmp #-40,f		;this way too...
 	beq 5$
 	rest a			;get back pointer to start
-6$:	tstb (a)+		;find the end of the item
-	bne 6$
+8$:	tstb (a)+		;find the end of the item
+	bne 8$
 	inc a			;do a .even
 	bic #1,a
 	br 1$			;try for another
 
 
-7$:	tst e			;end of menu string too?
-	beq 13$			;perfect match
+9$:	tst e			;end of menu string too?
+	beq 17$			;perfect match
 	tst b			;have we already found one thing that matches?
-	beq 13$			;nope
+	beq 17$			;nope
 	sub #string+1,c		;giving number of matched characters
 	dec a			;undo the ()+
 	add b,c			;getting pointer into first matched thing at end of match
-8$:	cmpb (c)+,(a)+		;do the two menu items match?
-	bne 10$			;no, ambigious so far
+10$:	cmpb (c)+,(a)+		;do the two menu items match?
+	bne 14$			;no, ambigious so far
 	cmpb #40,-1(a)		;space?
-	beq 9$			;yes, matched to space
+	beq 11$			;yes, matched to space
 	tstb -1(a)		;zero would be good too
-	bne 8$			;keep looking
-9$:	mov c,menueq		;only go this far in the completion
-	tst (p)+		;flush saved thing
-	br 6$
+	bne 10$			;keep looking
+11$:	mov c,menueq		;only go this far in the completion
+12$:	cmpb (c)+,(a)+		;more match?
+	bne 13$			;nope
+	cmpb #40,-1(a)		;match to another space?
+	beq 11$			;yup
+	tstb -1(a)		;how about a zero?
+	bne 12$
+	mov c,menueq		;ok, this is the end
+13$:	tst (p)+		;flush saved thing
+	br 8$
 
-10$:	tst (p)+		;flush saved thing
-11$:	rest <f,e>
+14$:	tst (p)+		;flush saved thing
+15$:	rest <f,e>
 	sez
 	sec
 	rts pc
 
-12$:	rest <f,e>
+16$:	rest <f,e>
 	sez
 	rts pc			;return ambigous
 
-13$:	rest b			;pop the found thing
-	br 6$
+17$:	rest b			;pop the found thing
+	br 8$
 
 ;here we have found a match which is at least partly unambigous
 ;or else no match at all
-14$:	tst b			;any match?
-	beq 11$			;nope
+18$:	tst b			;any match?
+	beq 15$			;nope
 	mov b,f
 	mov #string,d
-15$:	movb (b)+,(d)+		;move the matched thing into the string
-	beq 16$			;end of thing
+19$:	movb (b)+,(d)+		;move the matched thing into the string
+	beq 20$			;end of thing
 	cmp b,menueq		;end of valid match?
-	bne 15$
+	bne 19$
 	clrb (d)+
-	br 12$			;go get the rest
+	br 16$			;go get the rest
 
-16$:	mov f,prompt		;this becomes the prompt
+20$:	mov f,prompt		;this becomes the prompt
 	sub #menuoh,f
 	mov f,a			;copy it
 	tst prtspc		;special?
-	bge 17$			;regular or direct
+	bge 21$			;regular or direct
 	add #menuir-menudp,a
-17$:	mov menudp(a),a		;the dispatch address
+21$:	mov menudp(a),a		;the dispatch address
 	rest <,e>
 	clz
 	rts pc
 
-ptyip:	jsr pc,tyip		;any characters?
+;Wait until a character is typed or the time in f has elapsed
+ptyip:	save <a,b,c>
+.if z rt11
+	save #sstats
+	$sstat			;get the system time
+	mov stime,b		;low order part
+	mov stime+2,c		;high order part
+.iff
+	.gtim #emttmp,#stime
+	mov stime+2,b		;low order part
+	mov stime,c		;high order part
+.endc
+	add f,b
+	adc c			;get the time to give up
+
+1$:	jsr pc,tyip		;any characters?
 	bne 9$			;yup, return
+.if z rt11
 	save <#0,#1>		;sleep for 1 60th
 	$sleep
-	dec f
-	bgt ptyip
+	save #sstats
+	$sstat
+	cmp stime+2,c		;is the high order part equal?
+	bhi 8$			;above, done
+	blo 1$
+	cmp stime,b		;low order part
+	blo 1$			;not done yet
+				;done, fall in to 8$
+.iff
+	.gtim #emttmp,#stime
+	cmp stime,c		;is the high order part equal?
+	bhi 8$			;above, done
+	blo 1$
+	cmp stime+2,b		;low order part
+	blo 1$			;not done yet
+				;done, fall in to 8$
+.endc
+8$:	rest <c,b,a>
 	sez			;no characters
-9$:	rts pc
+	rts pc
+9$:	rest <c,b,a>
+	clz
+	rts pc
 
 ;type out a help text, pointer to it in menusv
 tmenu:	save <a,c,b>
@@ -5173,14 +4470,6 @@ tmenu:	save <a,c,b>
 	rest <b,c,a>
 	rts pc
 
-;type an asciz string with htyo
-;pointer to string in b
-htype:	movb (b)+,c
-	beq 3$			;end of text
-	jsr pc,htyo		;type out & fix screen image
-	br htype
-3$:	rts pc
-
 ;type a character in c on the screen
 ;clobbers the screen image to indicate we don't know what's there
 htyo:	save a
@@ -5209,6 +4498,32 @@ htyo:	save a
 	mov #12,c
 	jsr pc,@typec		;type a lf
 	br 3$			;done
+
+;ring the terminal bell
+bell:	save c
+	mov #7,c
+	jsr pc,@typec
+	jsr pc,ttyfls		;make sure it gets out
+	rest c
+	rts pc
+
+.space:	save c
+	mov #40,c
+	jsr pc,htyo
+	rest c
+	rts pc
+
+.tab:	jsr pc,.space
+	bit #7,curcar
+	bne .tab
+	rts pc
+
+.crlf:	save c
+	mov #15,c
+	jsr pc,htyo
+	rest c
+	rts pc
+
 
 ;get a string into the array "string". If the user pauses more than f/60 seconds call
 ;the routine in e. Return with an asciz string in string, terminating character in a
@@ -5285,6 +4600,79 @@ strgec:	save d
 	dec d			;point at the zero
 	br strge1
 
+;reset the whole world
+reseta:	jsr pc,kilbuf		;flush the buffer
+.if z rt11
+	jsr pc,incls		;close any input file
+	jsr pc,outcls		;close any output file
+.endc
+	jsr pc,mreset		;reset the entry modes
+;	jsr pc,kreset		;reset all user defined keys
+.iif nz prtnum,	jsr pc,preset	;reset the printer stuff
+	rts pc
+
+.if nz prtnum
+;reset all print modes to the defaults
+preset:	mov #prtmdm,f		;printer mode menu
+	br mrese1
+.endc
+
+;reset all the entry modes to the defaults
+mreset:	mov #emodem,f		;gobble the menu pointer
+mrese1:	mov menuvr(f),b		;pointer to the menu variable
+	beq 1$			;no variable
+	mov menud1(f),(b)+	;set the defauult
+1$:	jsr pc,getnmi		;move a to next menu item
+	bne mrese1		;loop if not at end
+	rts pc
+
+getnmi:	add #menuoh,f
+3$:	tstb (f)+
+	bne 3$
+	inc f
+	bic #1,f		;do a .even
+	tst (f)			;at end?
+	rts pc
+
+;general print number routine
+;call with a clear, number to be printed in b
+;minimum number of digits to print in c
+;and radix to print in (=< 10.) in d
+prn:	div d,a
+	save <b,#prndig>
+	mov a,b
+	clr a
+	dec c
+	bgt prn
+	tst b
+	bne prn
+	rts pc		;return to prndig
+
+prndig:	rest c		;digit to print
+	add #60,c
+	jmp htyo
+	
+;print a decimial number in d with at least 2 digits
+zprdn:	save c
+	mov #2,c	;at least 2 digits
+	br prdn2
+
+;print a decimial number in d with at least 3 digits
+xprdn:	save c
+	mov #3,c	;at least 3 digits
+	br prdn2
+
+prdn:	save c
+	clr c
+prdn2:	save <a,b,d>
+	mov d,b
+1$:	mov #10.,d
+	clr a
+prdn1:	jsr pc,prn
+	rest <d,b,a,c>
+	rts pc
+
+
 ;print the decimal value of a menu variable
 mprtnm:	mov @menuvr(a),d	;get the value
 	jsr pc,prdn		;print it
@@ -5297,10 +4685,12 @@ msetn1:	rest f
 	mov b,@menuvr(f)
 	rts pc
 
+.if nz prtnum
 ;Accept a measurement and set the variable to it
 msetms:	save f
 	jsr pc,mgetms
 	br msetn1
+.endc
 
 ;Get an integer from the loser
 mgetnm:	clr e			;no prompt
@@ -5373,6 +4763,8 @@ mgetyn:	jsr f,acsav
 mgetsc:	mov #strarg,a		;pointer to the string
 1$:	cmpb #40,(a)+		;skip spaces
 	beq 1$
+	cmpb #fixchr,-1(a)	;was it fixed space?
+	beq 1$
 	dec a
 mgets1:	movb (a)+,d		;from the user's string
 	movb (b)+,e
@@ -5405,6 +4797,7 @@ chrshl:	mov #yes,a		;the yes bit
 	xor a,shtlck		;complement it
 	br msets1		;set the status line
 
+.if nz prtnum
 ;set the mode to justify
 msetju:	mov #yes,prfilm		;turn on fill
 	br msetc1		;clear everything else and set justify
@@ -5472,6 +4865,7 @@ msetpt:	save f
 	div b,c
 	mov c,pihinc		;the width of a character
 	jmp msetn1
+.endc ;prtnum
 
 mstrgt:	tst strarg		;is there already an strarg?
 	bne 1$			;yes, just return
@@ -5486,6 +4880,7 @@ mstrgt:	tst strarg		;is there already an strarg?
 	rest <b,a>
 1$:	rts pc
 
+.if nz prtnum
 ;Print a measurement value, in the current units.
 ;All units internally are in 1/1000'ths of inches. However, if the
 ;units are set to metric these are typed out in centimeters.
@@ -5533,6 +4928,8 @@ mgetms:	clr e
 	mov #strarg,a		;the beg of the string
 4$:	cmpb #40,(a)+		;space?
 	beq 4$			;yup, flush it
+	cmpb #fixchr,-1(a)	;fixed space?
+	beq 4$
 	dec a			;back to non-space
 	jsr pc,parsnm		;get the first part
 	save b			;this is the high order part
@@ -5556,6 +4953,8 @@ mgetms:	clr e
 	beq mgtcmd		;get in current mode then
 	cmpb #40,(a)+		;is there a space?
 	beq 3$			;yup, skip it
+	cmpb #fixchr,-1(a)
+	beq 3$
 	dec a			;go back to the non-space
 	mov #inches+1,b		;is it inches?
 	jsr pc,mgets1		;do a compare
@@ -5597,7 +4996,9 @@ mgetcm:	mov (p)+,b		;get the low order part
 	mov #cm,d		;WARNING! This is used by minsms!
 	mov f,e			;and so it this
 	rts pc
+.endc ;nz prtnum
 
+.if nz prtnum
 ;Insert a pitch set command
 minspt:	save @menuvr(f)		;save old value
 	jsr pc,mgetpt		;get the value
@@ -5615,7 +5016,7 @@ minsc1:	mov #cmdchr,c		;the magic command character
 	mov #strarg,b		;whatever the string was
 	tstb (b)		;anything to insert?
 	beq 1$			;nope
-	mov #40,c
+	mov #fixchr,c
 	jsr pc,inschr		;insert a space
 	jsr pc,minsst		;insert that
 1$:	mov #cmdchr,c		;terminate with another comamnd char
@@ -5628,10 +5029,21 @@ minscn:	clr strarg		;no argument
 
 ;Insert the string pointer to by b into the buffer
 minsst:	movb (b)+,c
-	beq 1$
+	beq 3$
+	cmpb #40,c		;regular space?
+	bne 1$			;nope
+	mov #fixchr,c		;translate to fixed space
+1$:
+.if nz frp
+	jsr pc,frppre		;is it a prefix?
+	bne 2$			;nope
+	movb (b)+,c		;get next char
+	jsr pc,frptrn		;translate it
+2$:
+.endc
 	jsr pc,inschr
 	br minsst
-1$:	rts pc
+3$:	rts pc
 
 ;Insert a yes-no
 minsyn:	save @menuvr(f)		;save the old one
@@ -5651,994 +5063,41 @@ minsms:	save @menuvr(f)		;save the old value
 	mov d,b			;WARNING! This is set deep in mgetms
 	mov e,a			;as is this
 	br minsy1		;go copy the right measurment unit in
+.endc ;prtnum
 
-;reset the whole world
-reseta:	jsr pc,kilbuf		;flush the buffer
-	jsr pc,incls		;close any input file
-	jsr pc,outcls		;close any output file
-	jsr pc,mreset		;reset the entry modes
-;	jsr pc,kreset		;reset all user defined keys
-;fall in to reset the printer and exit
-
-;reset all print modes to the defaults
-preset:	mov #prtmdm,f		;printer mode menu
-	br mrese1
-
-;reset all the entry modes to the defaults
-mreset:	mov #emodem,f		;gobble the menu pointer
-mrese1:	mov menuvr(f),b		;pointer to the menu variable
-	beq 1$			;no variable
-	mov menud1(f),(b)+	;set the defauult
-1$:	jsr pc,getnmi		;move a to next menu item
-	bne mrese1		;loop if not at end
+.if nz rt11
+.sbttl file routines for RT11
+chrfil:	mov #filep,a		;thing to prompt with
+	mov #filehl,e		;thing to prompt with if he delays 
+	jsr pc,dmenu		;do a standard menu thingy
 	rts pc
 
-getnmi:	add #menuoh,f
-3$:	tstb (f)+
-	bne 3$
-	inc f
-	bic #1,f		;do a .even
-	tst (f)			;at end?
-	rts pc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.endc ;nz rt11
 
-;general print number routine
-;call with a clear, number to be printed in b
-;minimum number of digits to print in c
-;and radix to print in (=< 10.) in d
-prn:	div d,a
-	save <b,#prndig>
-	mov a,b
-	clr a
-	dec c
-	bgt prn
-	tst b
-	bne prn
-	rts pc		;return to prndig
+.if z rt11
+space:	.+2			;from here up is free space
+.iff
+	.limit
+space=.-2
+.endc
 
-prndig:	rest c		;digit to print
-	add #60,c
-	jmp htyo
-	
-;print a decimial number in d with at least 2 digits
-zprdn:	save c
-	mov #2,c	;at least 2 digits
-	br prdn2
-
-;print a decimial number in d with at least 3 digits
-xprdn:	save c
-	mov #3,c	;at least 3 digits
-	br prdn2
-
-prdn:	save c
-	clr c
-prdn2:	save <a,b,d>
-	mov d,b
-1$:	mov #10.,d
-	clr a
-prdn1:	jsr pc,prn
-	rest <d,b,a,c>
-	rts pc
-
-
-
-.sbttl printer stuff
-
-;Print a file
-filprt:	jsr pc,setfls		;set a file as the source
-	br plnprt
-
-chrvpr:	jsr pc,setbfs		;set up buffer as source of lines
-;fall into the plain print routine, which just prints the lines on the printer
-plnprt:	jsr pc,opnprt		;open the printer
-	jsr pc,prtrst		;reset it
-	jsr pc,makprl		;make a line for printing
-5$:	jsr pc,rstprl		;reset the print line
-	clr d
-
-2$:	jsr pc,pgtvnc		;get next character from the line
-	bcs 9$			;if c set, none left
-	beq 3$			;no characters on the line if z set
-	jsr pc,prputc		;put it it the print line at the current virtual position
-	br 2$
-3$:	jsr pc,prtlin		;print it
-	br 5$
-
-9$:	jsr pc,freprc		;free the print line
-	jsr pc,clsprt
-	rts pc
-
-
-;Print a file
-filjpr:	jsr pc,setfls		;set a file as the source
-	br jusprt
-
-;print routinte that handling all the justifing stuff
-chrprj:	jsr pc,setbfs		;set up buffer as source of lines
-;fall into the justifiying print routine
-jusprt:	jsr pc,opnprt		;open the printer
-	jsr pc,prtrst		;reset it
-	jsr pc,savprm		;save the printer modes
-	jsr pc,makprl		;make a line for printing
-	jsr pc,rstprl		;reset the print line
-	clr d			;count of characters on the line
-6$:	jsr pc,pgetnc		;get the first character of the line
-	bcs 9$			;if c set, none left
-	beq 4$			;no characters if z set
-	mov b,a			;save pointer past last regular space character
-	dec a			;because pgetnc already inc'ed it
-	mov d,e			;and the count of characters left
-	inc e			;this is because, well, it's a fencepost problem
-				;you figure it out....
-	jsr pc,whitep		;is it whitespace?
-	bne 5$			;nope, just keep justifing
-	jsr pc,prtnel		;print a non-empty line, without any adjusting
-	br 5$
-
-2$:	jsr pc,pgetnc
-	beq 7$			;hit the end of a line
-5$:	cmpb #40,c		;is it an regular space?
-	bne 1$			;nope
-	mov b,a			;save pointer past last whitespace character
-	mov d,e			;and the count of characters left
-	mov prclpt,f		;save the value of the print line pointer
-1$:	jsr pc,prputc		;put it it the print line at the current virtual position
-	tst prfilm		;are we in fill mode?
-	beq 2$			;nope, don't check the margin
-	cmp prrmar,prvhps	;are we past the good right margin?
-	blo 8$			;yup, flush this word and print the line
-	br 2$			;go do the next character
-
-7$:	tst prfilm		;are we in fill mode?
-	beq 14$			;nope, print the line
-	jsr pc,whitep		;was the last character on the line whitespace?
-	beq 6$			;yup, don't put in any for the cr
-	mov #40,c		;plain old space
-	mov prclpt,f		;save the value of the print line pointer
-	jsr pc,prputc		;put it in
-	cmp prrmar,prvhps	;are we past the good right margin?
-	bhis 6$			;no, go gobble more characters
-				;fall in to flush this space and print the line
-
-8$:	mov prclin,c		;get the pointer to the print line
-	mov f,blused(c)		;set how much of it to really print
-14$:	jsr pc,prtajp		;adjust if we are in adjust mode
-	jsr pc,prrtcn		;right justify or center, maybe
-	jsr pc,prtrsl		;print the line
-	tst d			;any more on the line?
-	beq 6$			;nope, get new line
-	mov a,b			;get back the pointer to just after the whitespace
-	mov e,d			;and print this many characters from the old line
-	br 2$
-
-4$:	jsr pc,prtnel		;print and reset line if it isn't blank
-	br 14$			;and now print a blank line
-
-9$:	jsr pc,prtnel		;get out the last line
-	jsr pc,freprc		;free the print line
-	jsr pc,clsprt
-	jsr pc,resprm		;restore the printer modes
-	rts pc
-
-;print the current line if there is anything on it
-prtnel:	tst prclpt		;anything on the line?
-	beq 1$			;nope, just return
-	jsr pc,prrtcn		;right justify or center, maybe
-	jsr pc,prtrsl		;print and reset the line
-1$:	rts pc
-
-
-;set up the buffer as a source of line for a print routine
-setbfs:	mov bufend,prslnc	;the count of lines in the buffer
-	mov buffer,prlpnt	;pointer into buffer
-	add #blhead,prlpnt
-	mov #getbfl,prgetl	;set up the get line routine
-	rts pc
-
-;get the next line form the buffer
-getbfl:	dec prslnc		;one less
-	blt 1$			;done
-	mov @prlpnt,b		;get the pointer
-	add #2,prlpnt
-	add #blhead,b		;pointer to the data
-	mov blused-blhead(b),d	;count of chars on the line
-	clc			;clear c
-	rts pc
-
-1$:	sec
-	rts pc
-
-;Set a file as a source
-setfls:	jsr pc,rfile		;get a file to read
-	beq 1$			;lost
-	mov tmpcap,prfcap	;the file to read
-	mov #getfll,prgetl	;the get line routine
-	mov #prbuf,prslnc
-	mov #prbuf,prlpnt
-	jsr pc,delcur
-	rts pc
-
-1$:	filerr
-
-;Get a line from the file
-getfll:	save a
-1$:	mov prlpnt,a		;pointer to where we are now
-	mov a,b			;this is where this line starts
-	clr d			;count of the line
-2$:	cmp a,prslnc		;are we at the end of the buffer?
-	bhis 3$			;yup, go read a new one
-	inc d			;one more char in the line
-	cmpb #15,(a)+		;cr?
-	bne 2$			;nope
-	dec d			;don't count the cr
-	mov a,prlpnt		;this is where the next line starts
-	rest a
-	tst d			;set the z bit properly
-	clc
-	rts pc
-
-3$:	mov #prfbuf,d		;start of the printer file buffer
-	mov d,prlpnt		;this is the new pointer
-	mov #-prfbfl,a		;size of the buffer
-4$:	cmp b,prslnc		;at the end of the buffer?
-	bhis 5$			;yup
-	movb (b)+,(d)+		;copy good stuff down
-	inc a			;counting
-	br 4$
-
-5$:	save <d,a,prfcap>
-	.blki			;read in the buffer full
-	bne 6$			;branch if got a whole buffer
-	rest <,b,prslnc>	;restore end of buffer pointer and count
-	movb #15,@prslnc	;put a cr on the end
-	inc prslnc		;and include it in the count
-	cmp b,#-prfbfl		;did we get exactly nothing?
-	bne 1$			;no, got somthing
-	jsr pc,flsprf		;delete prfcap
-	rest a
-	sec
-	rts pc			;signal eof
-
-6$:	mov #prfbuf+prfbfl,prslnc	;got a whole buffer
-	br 1$
-
-;Delete the printer file cap
-flsprf:	mov prfcap,a
-	beq 1$
-	jsr pc,deldcp		;delete cap
-	clr prfcap
-1$:	rts pc
-
-;get the next character from the line and return it in c
-;uses b as a pointer and d as a count; if the count is zero, get a new line
-pgtvnc:	clc
-	dec d			;more characters on the line?
-	beq 1$			;no, line just got exhausted
-	bgt 4$			;yes, can get more
-	jsr pc,@prgetl		;get the next line
-	bcs 1$			;ran out of lines
-	beq 1$			;no chars on that line
-4$:	save #0
-2$:	movb (b)+,c		;get a character
-	bic #177400,c		;clear crap
-	cmpb #atribc,c		;atribute cahracter?
-	bhi 3$			;nope, just exit
-	bisb c,1(p)		;set in the atributes
-	mov #'?,c		;in case of lossage
-	cmp #1,d		;about to run off the line?
-	beq 3$			;yup, return unsatisfied
-	dec d
-	br 2$			;go get another character
-3$:	bis (p)+,c		;set in the bits
-	clz
-1$:	rts pc
-
-;get the next character from the line an output it, provided it isn't a command
-;start character. If it is, process the command.
-pgetnc:	jsr pc,pgtvnc		;get the character
-	bcs 9$			;no more characters
-	beq 9$			;end of line
-	cmpb #cmdchr,c		;command?
-	bne 9$			;nope
-	save <a,e,f>
-	mov #prtcms,a		;printer command string
-1$:	jsr pc,pgtvnc		;get the next character
-	beq 2$			;end of the line
-	cmpb #cmdchr,c		;end of command indicator?
-	beq 2$			;yup
-	movb c,(a)+		;store it away
-	br 1$			;and go for next one
-
-2$:	save <b,d>
-	clrb (a)+		;terminate with a zero
-	mov #prtmdm,f		;printer menu
-3$:	cmp #menuti,(f)		;is it just a title?
-	beq 4$			;go ignore it
-	mov f,a	
-	add #menuoh,a		;get to the string part
-	mov #prtcms,b		;the command in the source
-	jsr pc,mgets1		;do a string compare
-	beq 6$			;it worked!
-4$:	jsr pc,getnmi		;get to the next menu item
-	beq 8$			;at end
-	br 3$
-
-6$:	mov #strarg,a		;the string argument
-7$:	movb (b)+,(a)+		;copy the arg
-	bne 7$
-	jsr pc,@menudp(f)	;dispatch to the routine
-	jsr pc,prsetv		;reset all variables
-	cmp prvhps,prlefm	;is the current pos before the margin?
-	bhis 8$			;nope
-	mov prlefm,prvhps	;set it at the margin
-8$:	rest <d,b,f,e,a>
-	br pgetnc		;to get one
-
-9$:	rts pc
-;set up to print a line
-makprl:	tst prclin		;got one already?
-	bne 2$			;yup
-	save a
-	mov #100.*4,a		;a good size buffer
-	jsr pc,getblk		;get one
-	bne 1$			;got it
-	noroom			;arg!!!
-1$:	mov a,prclin		;set it here
-	rest a
-2$:	rts pc
-
-;free the print line
-freprc:	mov prclin,a		;get the printer line
-	jsr pc,freeb		;free it
-	clr prclin
-	rts pc
-
-;print the line and fall though to reset for the next one
-prtrsl:	jsr pc,prtlin		;print the line
-;reset the pointers to start accumulating a new line
-rstprl:	clr prclpt		;and clear the pointer
-	save b
-	mov prclin,b		;pointer to the line
-	clr blused(b)		;nothing used in it
-	rest b
-	rts pc
-
-;Save the starting printer modes in the prtsav array
-savprm:	save <a,f>
-	mov #prtmdm,f		;pointer to the menu
-	mov #prtsav,a		;pointer to the save array
-	mov pc,(a)+		;flag to say that something saved
-1$:	tst menuvr(f)		;does this one have a variable?
-	beq 2$			;nope
-	mov @menuvr(f),(a)+	;save the value
-2$:	jsr pc,getnmi		;go to the next
-	bne 1$
-	rest <f,a>
-	rts pc
-
-;Restore the starting printer modes in the prtsav array
-resprm:	save <a,f>
-	mov #prtmdm,f		;pointer to the menu
-	mov #prtsav,a		;pointer to the save array
-	tst (a)			;anything saved?
-	beq 3$			;nope
-	clr (a)+		;don't restore this again
-1$:	tst menuvr(f)		;does this one have a variable?
-	beq 2$			;nope
-	mov (a)+,@menuvr(f)	;restore the value
-2$:	jsr pc,getnmi		;go to the next
-	bne 1$
-3$:	rest <f,a>
-	rts pc
-
-;adjust the line if the adjust flag is set
-prtajp:	tst pradjm		;are we in adjust mode?
-	beq prtaj9		;nope
-prtajl:	jsr f,acsav
-	mov prclin,a		;pointer to the line
-	mov a,b			;copy it
-	add #blhead,b		;pointer to the data
-	mov blused(a),c		;used count
-	beq 8$			;nothing on the line
-	ash #-2,c		;characters in line
-	save <b,c>		;will need these later
-	clr f			;this will be the count of spaces
-1$:	cmpb #40,2(b)		;space?
-	bne 2$			;nope
-	inc f
-2$:	add #4,b
-	sob c,1$
-	tst f			;any spaces?
-	beq 7$			;sorry, loser
-	mov prrmar,d		;the amount of space that needs filling in
-	sub (b),d		;the first place not used on the line
-	ble 7$			;exactly right! (or else the line is too big to fit!)
-	clr c			;for the divide
-	div f,c			;get the amount we need for each space
-	rest <f,b>		;count of chars and pointer into line
-	clr a			;amount to add to each character
-3$:	add a,(b)		;adjust this character
-	cmpb #40,2(b)		;space?
-	bne 4$			;nope
-	add c,a			;add in the quotient to this space
-	dec d			;exhauseted remainder yet?
-	blt 4$			;yup
-	inc a			;keep trying
-4$:	add #4,b
-	sob f,3$
-	add a,(b)		;in case anybody cares, the end
-	br 8$
-
-7$:	cmp (p)+,(p)+
-8$:	jsr f,acres
-prtaj9:	rts pc
-
-;right justify or center the line if the flags are set
-prrtcn:	tst prcenm		;center?
-	bne 1$			;yup
-	tst prrgtm		;right adjust?
-	beq 9$			;nope, do nothing
-1$:	jsr f,acsav
-	mov prclin,a		;pointer to the current line
-	mov blused(a),b		;amount used
-	beq 4$			;nothing on the line
-	mov b,prclpt		;make that the pointer
-	mov a,c			;pointer to data
-	add #blhead,c
-	add b,c			;pointer to the end of the data
-	mov (c),prvhps		;restore the proper hpos
-	mov #40,c		;insert regular spaces
-	jsr pc,prputc		;put it into the line
-	jsr pc,prputc		;twice
-	mov prclin,a
-	mov a,c			;pointer to data
-	add #blhead,c
-	add b,c			;pointer to the end of the data
-	mov (c),4(c)		;make the last space on the line be in the right place
-	mov (c),10(c)		;also, the marker after the last space
-	ash #-2,b		;count
-2$:	cmpb #40,-2(c)		;is this a real space?
-	bne 3$			;nope
-	movb #fixchr,-2(c)	;replace with a fixed space
-3$:	mov -4(c),(c)		;copy the line up one place
-	mov -2(c),2(c)
-	sub #4,c		;next
-	sob b,2$		;flush all non-fixed spaces in the line
-	mov #40,2(c)		;make the first thing on the line a real space
-	tst prcenm		;center?
-	bne 4$			;yup, leave the last space there
-	sub #4,blused(a)	;ignore the last space
-4$:	jsr f,acres
-	jsr pc,prtajl		;go adjust the line right or center it
-9$:	rts pc
-
-
-;put the character in c into the current line
-;also adds the size of the character to prvhps
-prputc:	save <a,b>
-	mov prclin,a		;get the line pointer
-	mov prclpt,b		;the current pointer
-	bne 3$			;if there has been a character put on this line already
-	mov prlefm,prvhps	;set the virtual horizontail poisition to the left margin
-3$:	add #6,b		;what it will be when done
-	cmp b,bllen(a)		;do we have enough
-	blo 1$			;yup
-	mov #10.*4,b		;add enough for 10 more characters
-	jsr pc,expand
-	bne 2$			;ok
-	noroom			;arg!!
-2$:	mov a,prclin		;in case it moved
-1$:	add #4,blused(a)	;4 more bytes used
-	add prclpt,a		;the current pointer
-	add #blhead,a		;point to the data
-	add #4,prclpt		;move pointer for the next time
-	mov prvhps,(a)+		;set in the current position
-	mov c,(a)+		;and set in the character
-	add prvhin,prvhps	;every character is the same size
-	mov prvhps,(a)		;put the end of this character in the line too
-	rest <b,a>
-	rts pc
-
-;This routine takes a printer line buffer pointer in prclin and prints it. For the
-;momement it assumes a multiwriter but at some point it will also work
-;for the lineprinter, although of course it won't be able to do everything.
-;The line buffers look like this:
-;	normal line header, with length
-;	.word position on line of this character in printer units
-;	.word character, including possibbly sub&super script, bold and underline bits, 
-;Among other things this routine will print the line backwards if that seems wise
-;It assumes the printer has been inited to the HINC value
-prtlin:	jsr f,acsav
-	jsr pc,prquit		;see if we should stop printing
-	mov prvvps,a		;current vertical position
-	jsr pc,prrelv		;move the printer to that position
-	mov prclin,a
-	tst blused(a)		;blank line?
-	beq 9$			;yup, just flush it
-	mov a,b			;copy line pointer
-	add #blhead,b		;get to the data
-	mov b,c			;copy data pointer
-	add blused(a),c		;get a pointer to the end
-	cmp -(c),-(c)		;get a pointer to the position of the last character
-	mov (b),e		;position of first character
-	sub prhpos,e		;distance to print head
-	bge 1$
-	neg e			;abs value
-1$:	mov (c),f		;position of last char
-	sub prhpos,f		;distance
-	bge 2$
-	neg f			;abs value
-2$:	cmp e,f			;is first or lat closer to printhead?
-	bhis 3$			;first is further than last
-	jsr pc,prtfwd		;setup to print forward
-	mov #4,f		;this is the constant for getting to the next character
-	br 4$
-3$:	jsr pc,prtrev		;setup to print in reverse
-	mov #-4,f		;constant to get to the next character
-	mov c,b			;b has the character index
-4$:	mov blused(a),a		;get the length
-	ash #-2,a		;as number of characters
-5$:	jsr pc,prtchr		;print the character pointed to by b at the right place
-	add f,b			;next character
-	sob a,5$
-9$:	add prvinc,prvvps	;the amount to move down
-	jsr pc,prpage		;go see about paging
-	jsr f,acres
-	rts pc
-
-;This routine takes a pointer in b to a "character". A character is two
-;words; the first is the printer address the character is to be printed
-;at; the second is the character itself, possibly with flags.
-prtchr:	save <c,a>
-	mov (b),a		;the place to move to
-	jsr pc,prrelt		;do a relative tab
-1$:	mov 2(b),c		;get the actual character
-	bit #atrund*400,c	;underline?
-	beq 2$			;nope
-	save c
-	mov #'_,c
-	jsr pc,prcout		;output the underline
-	mov #10,c		;followed by a backspace
-	jsr pc,prcout
-	rest c
-2$:	bit #atrbld*400,c	;bold?
-	beq 3$			;nope
-	jsr pc,prcout		;print it once
-	mov (b),a		;get the position
-	inc a
-	jsr pc,prrelt		;move over one increment
-	jsr pc,prcout		;print it a second time
-	mov (b),a		;get the position
-	add #2,a
-	jsr pc,prrelt		;move over two increments
-				;and fall through to print again
-3$:	jsr pc,prcout		;and print it
-	rest <a,c>
-	rts pc
-
-
-;Come here to see if the guy has typed stop-print
-;This needs to be changed when we have background print
-prquit:	jsr pc,tyip		;did he type anything?
-	beq 2$			;nope
-	save <a,f>
-	jsr pc,getkey		;get the key code
-	jsr pc,getnam		;get the name
-	cmp #chrprq,f		;is it stop-print?
-	bne 1$			;nope
-	jsr pc,prstop		;enter the quit loop
-1$:	rest <f,a>
-2$:	rts pc
-
-;Inserted command to stop printer
-prstop:	mov #prstms,erstat	;stopped message
-				;fall into prquip
-
-;Stop printing until either continue or quit is pressed
-prquip:	jsr f,acsav
-	jsr pc,prbfls		;flush out the buffer
-	jsr pc,erdisp		;display the message
-1$:	jsr pc,bell		;ding!
-	jsr pc,getkey		;get the next key typed
-	jsr pc,getnam		;get it's name
-	cmp #chrprc,f		;continue?
-	beq 7$			;yup
-	cmp #chrqui,f		;quit?
-	bne 1$			;nope
-	prabor
-7$:	clr erstat
-	jsr pc,erdisp		;clear out the printer stopped message
-	jsr pc,prtrsh		;reset the printer hardware in case someone munged with it
-	jsr f,acres
-	rts pc
-
-chrprq:	ding			;someday this will stop a background print
-chrprc:	ding			;someday this will continue a backgound print
-
-;Come here after typing a line on the printer, to see if we need to go to
-;the next page.
-prpage:	cmp prvvps,prbotm	;are we at or past the bottom margin?
-	blo prpag9		;nope, do nothing
-prnpag:	jsr f,acsav
-	jsr pc,prgbot		;go to the bottom of this page
-	clr prvpos		;now reset our position
-	clr prvvps		;also reset the virtual position
-	jsr pc,prgtop		;go to the top of the next page
-	tst prcnpm		;continous paper or not?
-	bne 8$			;continous, keep printing
-	mov #prpagm,erstat	;say that we need paper
-	jsr pc,prquip		;stop printing until cont is pressed
-
-8$:	jsr f,acres
-prpag9:	rts pc
-
-;Set to the top margin of the page
-prgtop:	save a
-	mov prtopm,a		;set to the top margin
-prgto1:	jsr pc,prrelv		;do a relative vertical
-	rest a
-	rts pc
-
-;Set to the real bottom of the page
-prgbot:	save a
-	mov prbot,a
-	br prgto1
-
-;Reset everything you can think of in the printer.
-prtrst:	clr pindnt		;reset the indent
-	jsr pc,prsetv		;set the right values in the right places
-	jsr pc,prtrsh		;reset the printer hardware
-	clr prvpos		;zero on the vertical
-	tst prcnpm		;continous paper?
-	bne 1$			;yup
-	mov prtopm,prvpos	;no, assume paper is put in at the top margin
-1$:	mov prvpos,prvvps	;set the virtual position there too
-	jsr pc,prgtop		;go to the top of the page
-	rts pc
-
-;reset the printer hardware
-prtrsh:	save c
-	mov #62,c
-	jsr pc,preout		;clear all tab stops
-	mov #11,c		;do a abs tab
-	jsr pc,preout
-	mov #1,c		;to zero, to bang against the right
-	jsr pc,prout
-	clr prhpos		;printer is at the right
-	jsr pc,prshsp		;set HINC
-	jsr pc,prsvsp		;set VINC
-	rest c
-	rts pc
-
-;Take the current inch values and convert them into printer units.
-prsetv:	jsr f,acsav
-	mov piwidt,a		;Get the width of the page
-	sub pitwid,a		;get the margin size
-	bge 1$			;positive?
-	clr a			;no, make it zero
-1$:	asr a			;divide it by 2
-	mov a,pilmar		;set the left margin
-	add pindnt,pilmar	;the indent gets added to the left margin
-	add pitwid,a		;get the right margin
-	mov a,pirmar		;set it
-	mov pilent,a		;Get the length of the page
-	sub pitlen,a		;get the margin size
-	bge 2$			;positive?
-	clr a			;no, make it zero
-2$:	asr a			;divide it by 2
-	mov a,pitopm		;set the top margin
-	add pitlen,a		;get the bottom margin
-	mov a,pibotm		;set it
-	mov #prcnvt,a		;pointer to the convert table
-3$:	mov (a)+,b		;pointer to the thing to be converted
-	beq 4$			;done
-	mov (b),c		;get the thing to be converted
-	mul (a)+,c		;the fudge factor
-	div #1000.,c
-	mov c,@(a)+
-	br 3$
-4$:	jsr f,acres
-	rts pc
-
-;Do a relative tab operation to the location in a
-prrelt:	save <a,c>
-	sub prhpos,a		;get the amount to move
-	beq 9$			;zero
-	mov #34,c		;FS
-	jsr pc,preout		;output without breaking, preceed with escape
-	mov #20,c		;this will be the high order part, default is move right
-	bit #1,a		;odd?
-	beq 1$			;no carry, don't have to set the 1/120th bit
-	bis #10,c		;add 1/120 to the value
-1$:	tst a			;negative or positive?
-	bge 2$			;positive, go right
-	bic #20,c		;go left
-	neg a
-2$:	asr a			;divide by two
-	save a			;save a
-	bit #176000,a		;make sure it's not too big
-	beq 3$
-	bpt
-3$:	ash #-7,a		;get the high 3 bits
-	bis a,c			;set into the character
-	jsr pc,prout		;output it
-	rest c			;get it back
-	bic #177600,c		;strip to 7 bits
-	jsr pc,prout		;output it
-	bhis 9$
-	jsr pc,prbfls		;output the buffer
-9$:	rest <c,a>
-	mov a,prhpos		;set the new hpos value
-	rts pc
-
-;Do a relative vertical tab operation to the location in a
-prrelv:	save <a,c>
-	sub prvpos,a		;get the amount to move
-	beq 9$			;zero
-	mov #34,c		;FS
-	jsr pc,preout		;output without breaking, preceed with escape
-	mov #60,c		;this will be the high order part, default is move up
-1$:	tst a			;negative or positive?
-	bge 2$			;positive, go up
-	bic #20,c		;go down
-	neg a
-2$:	save a			;save a
-	bit #176000,a		;make sure it's not too big
-	beq 3$
-	bpt
-3$:	ash #-7,a		;get the high 3 bits
-	bis a,c			;set into the character
-	jsr pc,prout		;output it
-	rest c			;get it back
-	bic #177600,c		;strip to 7 bits
-	jsr pc,prout		;output it
-	bhis 9$
-	jsr pc,prbfls		;output the buffer
-9$:	rest <c,a>
-	mov a,prvpos		;set the new vpos value
-	rts pc
-
-
-;set the HINC in the printer to the value in PRHINC
-prshsp:	save c
-	mov #37,c
-	jsr pc,preout		;send the set HINC command
-	mov prhinc,c
-prshs1:	bgt 1$			;make sure it's positive
-	neg c
-1$:	inc c			;printer subtracts one
-	jsr pc,prout
-	bhis 9$
-	jsr pc,prbfls		;output the buffer
-9$:	rest c
-	rts pc
-
-;set the VINC in the printer to the value in PRVINC
-prsvsp:	save c
-	mov #36,c
-	jsr pc,preout		;send the set VINC command
-	mov prvinc,c
-	br prshs1
-
-;set up the printer to print forward
-prtfwd:	save c
-	mov #65,c
-	jsr pc,preout		;set the printer to forward motion
-	tst prhinc		;need to make hinc positive
-	bgt 1$			;it is now
-	neg prhinc
-1$:	rest c
-	rts pc
-
-;set up the printer to print reverse
-prtrev:	save c
-	mov #66,c
-	jsr pc,preout		;set the printer to reverse motion
-	tst prhinc		;need to make hinc negative
-	blt 1$			;it is now
-	neg prhinc
-1$:	rest c
-	rts pc
-
-
-
-;output the character in c to the printer, keeping track of the resulting position
-;this routine is only for printing characters and cr
-prcout:	bit #200,c		;accent character?
-	bne 7$			;yup, special
-	jsr pc,prout		;put it into the buffer
-	bhis 1$			;room left?
-	jsr pc,prbfls		;flush out the buffer
-1$:	cmp #15,c		;cr?
-	beq 4$			;yes, special
-	cmp #10,c		;backspace?
-	beq 6$			;special
-	cmp #12,c		;linefeed?
-	beq 5$
-	add prhinc,prhpos	;indicate the carrige movement
-2$:	bge 3$			;make sure we didn't jam against the edge
-	clr prhpos		;yes, jsut set to zero
-3$:	rts pc
-
-4$:	bpt			;nobody should ever cr the printer
-;	mov prrlfm,prhpos	;the carriage moves to the left margin
-;	save c
-;	mov #12,c		;do a linefeed
-;	jsr pc,prcout
-;	rest c
-;	rts pc
-
-5$:	bpt			;nobody should ever lf it either
-;	add prvinc,prvpos	;indicate the vertical movement
-;	rts pc
-
-6$:	sub prhinc,prhpos
-	br 2$
-
-7$:	save c
-	cmpb #300,c		;up in the special range?
-	blos 10$		;yup
-	bic #177740,c		;flush extra bits, including upper/lower ness
-	asl c			;get a word index
-	add #fnteng,c		;english font table
-	tst prfrfm		;french print wheel?
-	beq 8$			;nope
-	add #fntfr-fnteng,c	;yup, french
-8$:	mov (c),c		;get the character(s) to print
-	beq 13$			;none
-9$:	jsr pc,prcout		;output the first one
-	swab c			;get the second one
-	bic #177400,c
-	beq 13$			;none
-	save c			;save it
-	mov #10,c		;do a backspace
-	jsr pc,prcout
-	rest c
-	br 12$
-
-10$:	beq 14$			;fixed space
-	cmp #cmdchr,c		;is it the magic commadn character?
-	bne 11$			;nope
-	mov #"OX,c		;print it as O overstrike X
-	br 9$
-11$:	mov #'?,c
-12$:	jsr pc,prcout
-13$:	rest c			;sometime we should fix these
-	rts pc
-14$:	movb #40,c		;regular space
-	br 12$
-
-
-;put the character in c into the printer buffer
-;sets condition codes for buffer nearly full
-;e.g.:
-;	jsr pc,prout
-;	bhis 1$
-;	jsr pc,prbfls		;buffer is full, flush it out
-
-prout:	movb c,@prbufp		;put in the character
-	inc prbufp		;for the next one
-	inc prbufc		;number of characters in the buffer
-	cmp #prblsz-10,prbufc	;set condition codes for plenty of room in the buffer
-	rts pc
-
-;output escape followed by character in c to multiwriter. Don't
-;allow an ETX break to occur.
-preout:	save c
-	mov #33,c
-	jsr pc,prout		;output the escape
-	rest c
-	br prout		;followed by the character
-
-;flush the buffer out to the printer. If there is more than one job and for
-;some reason the buffer can't be flushed, call the FLUSH routine to run the
-;other job
-prbfls:	jsr f,acsav
-12$:	cmp #nprblk,prblkc	;are there already enough outstanding blocks?
-	blos 10$		;yes, go hang
-	inc prblkc		;we will output one more block
-	mov #3,c		;the end of block character
-	jsr pc,prout		;put it into the buffer
-	mov #prbuf,a		;start of the buffer
-	mov prbufc,b		;total characters that need to be output
-	cmp #1,njobs		;more than one job?
-	bne 1$			;yup
-	mov b,c			;just blko all the characters
-	br 3$
-1$:	save prtcap		;cap to the printer
-	.ospac			;get the amount of available space
-	rest <,c>
-	bne 2$			;there is some avaialble
-	jsr pc,flush		;none avaiable, wait
-	br 1$			;try again
-2$:	cmp b,c			;is there more avaiable than we need?
-	bhis 3$			;no, use it all
-	mov b,c			;use exactly what we need
-3$:	save <a,c>		;pointer and count
-	neg (p)
-	save prtcap		;cap to the printer
-	$blko			;output the stuff
-	add c,a			;move the buffer pointer
-	sub c,b			;got this many out
-	bne 1$			;still got more to go
-	clr prbufc		;we have flushed all the characters
-	mov #prbuf,prbufp
-	jsr f,acres
-	rts pc
-
-10$:	save c
-	clr prtwai
-13$:	jsr pc,prtgrc		;get a reply character
-	beq 11$			;none, go wait
-	cmpb #6,c		;ack?
-	bne 13$			;nope, suprious
-	dec prblkc		;one less outstanding block
-	rest c
-	br 12$
-11$:	inc prtwai		;indicate waiting time
-	cmp #5,prtwai		;waited more than 5 seconds?
-	ble 20$			;yup, lose
-	jsr pc,flush		;wait for the printer to have some room
-	br 13$			;and try again
-20$:	jmp prtlos		;print not ready, flush it
-
-;get a reply character from the printer, return in c
-prtgrc:	cmp -(p),-(p)
-	save prtcap
-	movb #.ttpek,1(p)	;
-	$invok			;find out if there is a character
-	tst (p)+		;negative if none
-	blt 1$			;go wait
-	save prtcap
-	$byti			;get the character
-	rest c
-	clz
-	rts pc
-
-1$:	sez
-	rts pc
-
-
-;temp flush routine, pending timesharing
-flush:	save <#0,#60.>
-	$sleep			;wait one second
-	rts pc
-
-;open the multiwriter, put the cap in prtcap
-opnprt:	tst prtcap		;already open?
-	bne 2$			;yup
-	save <#-1,#prtnum,#.ttcap*400>	;create tty number prtnum
-	.invok
-	bne 1$
-	filerr
-1$:	rest prtcap		;the new printer cap
-	save <,#.timgo+.timgi,prtcap>
-	bis #.ttmov*400,(p)
-	$invok
-2$:	jsr pc,prtgrc		;get any reply characters
-	bne 2$			;till there are no more
-	clr prblkc		;no outstanding blocks
-	jsr pc,prbfls		;send a block out
-	save <#0,#6.>
-	$sleep			;wait one tenth of a second
-	jsr pc,prtgrc		;should be a reply
-	beq prtlos		;lost, no reply
-	clr prblkc		;no outstanding blocks
-	rts pc
-
-prtlos:	jsr pc,clspr1		;print not ready, close it
-	prtntr
-
-
-;close the multiwriter which is open on prtcap
-clsprt:	jsr pc,prgbot		;go to the bottom of the page
-clspr1:	jsr pc,prbfls		;flush out the buffer
-	mov prtcap,a
-	jsr pc,delcap
-	clr prtcap		;closed
-	rts pc
-
-space:				;from here up is free space
 .if z lsi
+.if nz sits
 .=<.!17777>+1
 .rept 8
 .if nz .-140000
@@ -6647,6 +5106,7 @@ space:				;from here up is free space
 .=.+20000			;kludge
 .endc
 .endr
+.endc
 .endc
 spacey:
 pass2=1
