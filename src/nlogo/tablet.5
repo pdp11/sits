@@ -1,0 +1,35 @@
+.if nz lsi
+tablet:	mov tabdev,b	;get tablet word
+	bmi 1$		;1st arg: true iff hi bit is 1
+	push #false
+	br 2$
+1$:	push #true
+2$:	mov @s,-(p)	;1st name
+	movb b,c	;2nd arg: true iff hi bit of lo bite is 1
+	bmi 3$
+	push #false
+	br 4$
+3$:	push #true
+4$:	mov s,f		;2nd name
+	mov 2(f),-(p)
+	swab b		;3rd arg: hi byte minus its hi bit
+	bic #-200,b
+	jsr pc,.csnin
+	push b
+	mov 4(f),-(p)	;3rd name
+	movb c,b	;4th arg: lo byte minus its hi bit
+	bic #-200,b
+	jsr pc,.csnin
+	add #6,s
+	pushs b		;now set up 4 thing/name pairs on the spdl
+	pushs (p)+
+	pushs (p)+
+	pushs (p)+
+	pushs (p)+
+	pushs (p)+
+	pushs (p)+
+	jsr pc,mmake9	;& do 4 calls to make
+	jsr pc,mmake9
+	jsr pc,mmake9
+	jmp mmake9
+.endc	;nz lsi
