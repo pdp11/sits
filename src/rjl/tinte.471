@@ -2777,7 +2777,10 @@ chrarg:	mov #argstr,prompt
 
 
 ;die for debugging
-die:	bpt
+die:	tyoesc #'x		;c-100 kludge, restore function keys
+	jsr pc,ttyfls
+	bpt
+	jsr pc,@terint		;reset the terminal
 	rts pc
 
 ;for debugging, insert lots of characters
