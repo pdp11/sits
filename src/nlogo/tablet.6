@@ -1,4 +1,5 @@
-.if nz lsi
+.ifnz lsi
+
 tablet:	mov tabdev,b	;get tablet word
 	bmi 1$		;1st arg: true iff hi bit is 1
 	push #false
@@ -32,4 +33,4 @@ tablet:	mov tabdev,b	;get tablet word
 	jsr pc,mmake9
 	jsr pc,mmake9
 	jmp mmake9
-.endc	;nz lsi
+.endc
