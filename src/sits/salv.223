@@ -2024,6 +2024,7 @@ FLPSE3:	CLZ
 	RTS PC
 
 FLPERX:	INC DSKERR
+	TYPE <>
 	DEC RETRYS		;TIME TO GIVE UP?
 	BGE 1$
 2$:	TYPE <Too many errors, ignore or retry? >
