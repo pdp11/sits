@@ -208,7 +208,7 @@ change:	mov s,f			;swap change's 2 args
 
 	jsr pc,run		;now run the sentence given by the 2nd arg
 
-	mov #gtendc,f		;send the endch command to the 2500
+	mov #gtendc,b		;send the endch command to the 2500
 	jsr pc,gtout
 	sez			;no deposit, no return
 	rts pc
