@@ -209,7 +209,7 @@ undrmd:	0			;if yes all text is entered underlined
 shtlck:	0			;if yes translate all lower case input to upper case
 chop:	0			;if nono-zero chop the lines at the right margin
 
-ttybfl=200.
+ttybfl=400.
 ttybuf:	.blkb ttybfl		;buffer to make tty output fast
 ttybfc:	0			;count of used space in buffer
 ttybfp:	ttybuf			;pointer to free place in buffer
@@ -5483,12 +5483,12 @@ mgetms:	clr e
 	bne 5$
 1$:	mov b,(p)		;stuff in the low order part
 2$:	dec a
-3$:	tstb (a)		;go back to terminator
+3$:	mov a,f			;save this pointer
+	tstb (a)		;go back to terminator
 	beq mgtcmd		;get in current mode then
 	cmpb #40,(a)+		;is there a space?
 	beq 3$			;yup, skip it
 	dec a			;go back to the non-space
-	mov a,f			;save this pointer
 	mov #inches+1,b		;is it inches?
 	jsr pc,mgets1		;do a compare
 	beq mgetin		;get inches then
@@ -5784,8 +5784,9 @@ setfls:	jsr pc,rfile		;get a file to read
 	beq 1$			;lost
 	mov tmpcap,prfcap	;the file to read
 	mov #getfll,prgetl	;the get line routine
-	clr prlpnt
-	clr prslnc
+	mov #prbuf,prslnc
+	mov #prbuf,prlpnt
+	jsr pc,delcur
 	rts pc
 
 1$:	filerr
@@ -5803,10 +5804,12 @@ getfll:	save a
 	dec d			;don't count the cr
 	mov a,prlpnt		;this is where the next line starts
 	rest a
+	tst d			;set the z bit properly
 	clc
 	rts pc
 
 3$:	mov #prfbuf,d		;start of the printer file buffer
+	mov d,prlpnt		;this is the new pointer
 	mov #-prfbfl,a		;size of the buffer
 4$:	cmp b,prslnc		;at the end of the buffer?
 	bhis 5$			;yup
@@ -5814,7 +5817,7 @@ getfll:	save a
 	inc a			;counting
 	br 4$
 
-5$:	save <b,a,prfcap>
+5$:	save <d,a,prfcap>
 	.blki			;read in the buffer full
 	bne 6$			;branch if got a whole buffer
 	rest <,b,prslnc>	;restore end of buffer pointer and count
@@ -5834,7 +5837,8 @@ getfll:	save a
 
 ;get the next character from the line and return it in c
 ;uses b as a pointer and d as a count; if the count is zero, get a new line
-pgtvnc:	dec d			;more characters on the line?
+pgtvnc:	clc
+	dec d			;more characters on the line?
 	beq 1$			;no, line just got exhausted
 	bgt 4$			;yes, can get more
 	jsr pc,@prgetl		;get the next line
