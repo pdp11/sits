@@ -1,0 +1,973 @@
+;print commands (first level)
+chrprt:	mov #printp,a		;printer prompt
+	mov #printm,e		;printer menu
+	br chrmo1
+
+;print modes
+setpmd:
+chrspr:	mov #setpmp,a		;set print modes prompt
+	jsr pc,setpm1		;do a gobble of a set command
+	br setpmd		;do until quit out of
+
+setpm1:	mov #prtmdm,e
+	mov #1,prtspc
+setpm2:	jsr pc,dmenu1
+	rts pc
+
+;insert printer commands
+inspcm:	mov prompt,a
+inspc1:	mov #prtmdm,e
+	mov #-1,prtspc		;use only the insertable commands
+	br setpm2
+
+chripr:	mov #inspmp,a		;set the prompt
+	br inspc1
+
+
+
+
+.sbttl printer stuff
+
+;Print a file
+filprt:	jsr pc,setfls		;set a file as the source
+	br plnprt
+
+chrvpr:	jsr pc,setbfs		;set up buffer as source of lines
+;fall into the plain print routine, which just prints the lines on the printer
+plnprt:	jsr pc,opnprt		;open the printer
+	jsr pc,prtrst		;reset it
+	jsr pc,makprl		;make a line for printing
+5$:	jsr pc,rstprl		;reset the print line
+	clr d
+
+2$:	jsr pc,pgtvnc		;get next character from the line
+	bcs 9$			;if c set, none left
+	beq 3$			;no characters on the line if z set
+	jsr pc,prputc		;put it it the print line at the current virtual position
+	br 2$
+3$:	jsr pc,prtlin		;print it
+	br 5$
+
+9$:	jsr pc,freprc		;free the print line
+	jsr pc,clsprt
+	rts pc
+
+
+;Print a file
+filjpr:	jsr pc,setfls		;set a file as the source
+	br jusprt
+
+;print routinte that handling all the justifing stuff
+chrprj:	jsr pc,setbfs		;set up buffer as source of lines
+;fall into the justifiying print routine
+jusprt:	jsr pc,opnprt		;open the printer
+	jsr pc,prtrst		;reset it
+	jsr pc,savprm		;save the printer modes
+	jsr pc,makprl		;make a line for printing
+	jsr pc,rstprl		;reset the print line
+	clr d			;count of characters on the line
+6$:	jsr pc,pgetnc		;get the first character of the line
+	bcs 9$			;if c set, none left
+	beq 4$			;no characters if z set
+	mov b,a			;save pointer past last regular space character
+	dec a			;because pgetnc already inc'ed it
+	mov d,e			;and the count of characters left
+	inc e			;this is because, well, it's a fencepost problem
+				;you figure it out....
+	jsr pc,whitep		;is it whitespace?
+	bne 5$			;nope, just keep justifing
+	jsr pc,prtnel		;print a non-empty line, without any adjusting
+	br 5$
+
+2$:	jsr pc,pgetnc
+	beq 7$			;hit the end of a line
+5$:	cmpb #40,c		;is it an regular space?
+	bne 1$			;nope
+	mov b,a			;save pointer past last whitespace character
+	mov d,e			;and the count of characters left
+	mov prclpt,f		;save the value of the print line pointer
+1$:	jsr pc,prputc		;put it it the print line at the current virtual position
+	tst prfilm		;are we in fill mode?
+	beq 2$			;nope, don't check the margin
+	cmp prrmar,prvhps	;are we past the good right margin?
+	bhis 2$			;nope, go get next cahracter
+	tst f			;is there anything on the line?
+	beq 2$			;no, ignore margin
+	br 8$			;flush this word and print line
+
+7$:	tst prfilm		;are we in fill mode?
+	beq 14$			;nope, print the line
+	jsr pc,whitep		;was the last character on the line whitespace?
+	beq 6$			;yup, don't put in any for the cr
+	mov #40,c		;plain old space
+	mov prclpt,f		;save the value of the print line pointer
+	jsr pc,prputc		;put it in
+	cmp prrmar,prvhps	;are we past the good right margin?
+	bhis 6$			;no, go gobble more characters
+				;fall in to flush this space and print the line
+
+8$:	mov prclin,c		;get the pointer to the print line
+	mov f,blused(c)		;set how much of it to really print
+14$:	jsr pc,prtajp		;adjust if we are in adjust mode
+	jsr pc,prrtcn		;right justify or center, maybe
+	jsr pc,prtrsl		;print the line
+	tst d			;any more on the line?
+	beq 6$			;nope, get new line
+	mov a,b			;get back the pointer to just after the whitespace
+	mov e,d			;and print this many characters from the old line
+	br 2$
+
+4$:	jsr pc,prtnel		;print and reset line if it isn't blank
+	br 14$			;and now print a blank line
+
+9$:	jsr pc,prtnel		;get out the last line
+	jsr pc,freprc		;free the print line
+	jsr pc,clsprt
+	jsr pc,resprm		;restore the printer modes
+	rts pc
+
+;print the current line if there is anything on it
+prtnel:	tst prclpt		;anything on the line?
+	beq 1$			;nope, just return
+	jsr pc,prrtcn		;right justify or center, maybe
+	jsr pc,prtrsl		;print and reset the line
+1$:	rts pc
+
+
+;set up the buffer as a source of line for a print routine
+setbfs:	mov bufend,prslnc	;the count of lines in the buffer
+	mov buffer,prlpnt	;pointer into buffer
+	add #blhead,prlpnt
+	mov #getbfl,prgetl	;set up the get line routine
+	rts pc
+
+;get the next line form the buffer
+getbfl:	dec prslnc		;one less
+	blt 1$			;done
+	mov @prlpnt,b		;get the pointer
+	add #2,prlpnt
+	add #blhead,b		;pointer to the data
+	mov blused-blhead(b),d	;count of chars on the line
+	clc			;clear c
+	rts pc
+
+1$:	sec
+	rts pc
+
+;Set a file as a source
+setfls:	jsr pc,rfile		;get a file to read
+	beq 1$			;lost
+	mov tmpcap,prfcap	;the file to read
+	mov #getfll,prgetl	;the get line routine
+	mov #prbuf,prslnc
+	mov #prbuf,prlpnt
+	jsr pc,delcur
+	rts pc
+
+1$:	filerr
+
+;Get a line from the file
+getfll:	save a
+1$:	mov prlpnt,a		;pointer to where we are now
+	mov a,b			;this is where this line starts
+	clr d			;count of the line
+2$:	cmp a,prslnc		;are we at the end of the buffer?
+	bhis 3$			;yup, go read a new one
+	inc d			;one more char in the line
+	cmpb #15,(a)+		;cr?
+	bne 2$			;nope
+	dec d			;don't count the cr
+	mov a,prlpnt		;this is where the next line starts
+	rest a
+	tst d			;set the z bit properly
+	clc
+	rts pc
+
+3$:	mov #prfbuf,d		;start of the printer file buffer
+	mov d,prlpnt		;this is the new pointer
+	mov #-prfbfl,a		;size of the buffer
+4$:	cmp b,prslnc		;at the end of the buffer?
+	bhis 5$			;yup
+	movb (b)+,(d)+		;copy good stuff down
+	inc a			;counting
+	br 4$
+
+5$:	save <d,a,prfcap>
+	.blki			;read in the buffer full
+	bne 6$			;branch if got a whole buffer
+	rest <,b,prslnc>	;restore end of buffer pointer and count
+	movb #15,@prslnc	;put a cr on the end
+	inc prslnc		;and include it in the count
+	cmp b,#-prfbfl		;did we get exactly nothing?
+	bne 1$			;no, got somthing
+	jsr pc,flsprf		;delete prfcap
+	rest a
+	sec
+	rts pc			;signal eof
+
+6$:	mov #prfbuf+prfbfl,prslnc	;got a whole buffer
+	br 1$
+
+;Delete the printer file cap
+flsprf:	mov prfcap,a
+	beq 1$
+	jsr pc,deldcp		;delete cap
+	clr prfcap
+1$:	rts pc
+
+;get the next character from the line and return it in c
+;uses b as a pointer and d as a count; if the count is zero, get a new line
+pgtvnc:	clc
+	dec d			;more characters on the line?
+	beq 1$			;no, line just got exhausted
+	bgt 4$			;yes, can get more
+	jsr pc,@prgetl		;get the next line
+	bcs 1$			;ran out of lines
+	beq 1$			;no chars on that line
+4$:	save #0
+2$:	movb (b)+,c		;get a character
+	bic #177400,c		;clear crap
+	cmpb #atribc,c		;atribute cahracter?
+	bhi 3$			;nope, just exit
+	bisb c,1(p)		;set in the atributes
+	mov #'?,c		;in case of lossage
+	cmp #1,d		;about to run off the line?
+	beq 3$			;yup, return unsatisfied
+	dec d
+	br 2$			;go get another character
+3$:	bis (p)+,c		;set in the bits
+	clz
+1$:	rts pc
+
+;get the next character from the line an output it, provided it isn't a command
+;start character. If it is, process the command.
+pgetnc:	jsr pc,pgtvnc		;get the character
+	bcs 12$			;no more characters
+	beq 12$			;end of line
+	cmpb #cmdchr,c		;command?
+	bne 12$			;nope
+	save <a,e,f>
+	mov #prtcms,a		;printer command string
+1$:	jsr pc,pgtvnc		;get the next character
+	beq 4$			;end of the line
+	cmpb #cmdchr,c		;end of command indicator?
+	beq 4$			;yup
+	cmpb #fixchr,c		;is it a fixed space?
+	bne 2$			;nope
+	mov #40,c		;translate to regular
+2$:	cmpb #300,c		;is it in the alpha range?
+	blos 3$			;nope
+	bic #177400,c		;clear any crap
+	movb acctrn-200(c),c	;translate it
+3$:	movb c,(a)+		;store it away
+	br 1$			;and go for next one
+
+4$:	save <b,d>
+	clrb (a)+		;terminate with a zero
+	mov #prtmdm,f		;printer menu
+5$:	cmp #menuti,(f)		;is it just a title?
+	beq 8$			;go ignore it
+	mov f,a	
+	add #menuoh,a		;get to the string part
+	mov #prtcms,b		;the command in the source
+6$:	movb (a)+,c		;from the user's string
+	jsr pc,frppre		;accent prefix?
+	beq 6$			;yup, ignore it
+	movb (b)+,e
+	sub c,e			;difference
+	beq 7$			;same
+	cmpb #'A,c		;is it probably alphabetic?
+	bhi 8$			;nope, definitly not
+	cmp #40,e		;same except for case?
+	beq 7$			;yup
+	cmp #-40,e
+	beq 7$
+	br 8$
+
+7$:	tstb (a)		;end of the user's string?
+	bne 6$			;not yet
+	br 9$			;it worked!
+
+8$:	jsr pc,getnmi		;get to the next menu item
+	beq 11$			;at end
+	br 5$
+
+9$:	mov #strarg,a		;the string argument
+10$:	movb (b)+,(a)+		;copy the arg
+	bne 10$
+	jsr pc,@menudp(f)	;dispatch to the routine
+	jsr pc,prsetv		;reset all variables
+	cmp prvhps,prlefm	;is the current pos before the margin?
+	bhis 11$			;nope
+	mov prlefm,prvhps	;set it at the margin
+11$:	rest <d,b,f,e,a>
+	br pgetnc		;to get one
+
+12$:	rts pc
+;set up to print a line
+makprl:	tst prclin		;got one already?
+	bne 2$			;yup
+	save a
+	mov #100.*4,a		;a good size buffer
+	jsr pc,getblk		;get one
+	bne 1$			;got it
+	noroom			;arg!!!
+1$:	mov a,prclin		;set it here
+	rest a
+2$:	rts pc
+
+;free the print line
+freprc:	mov prclin,a		;get the printer line
+	jsr pc,freeb		;free it
+	clr prclin
+	rts pc
+
+;print the line and fall though to reset for the next one
+prtrsl:	jsr pc,prtlin		;print the line
+;reset the pointers to start accumulating a new line
+;note that this clears f too!!
+rstprl:	clr prclpt		;and clear the pointer
+	clr f
+	save b
+	mov prclin,b		;pointer to the line
+	clr blused(b)		;nothing used in it
+	rest b
+	rts pc
+
+;Save the starting printer modes in the prtsav array
+savprm:	save <a,f>
+	mov #prtmdm,f		;pointer to the menu
+	mov #prtsav,a		;pointer to the save array
+	mov pc,(a)+		;flag to say that something saved
+1$:	tst menuvr(f)		;does this one have a variable?
+	beq 2$			;nope
+	mov @menuvr(f),(a)+	;save the value
+2$:	jsr pc,getnmi		;go to the next
+	bne 1$
+	rest <f,a>
+	rts pc
+
+;Restore the starting printer modes in the prtsav array
+resprm:	save <a,f>
+	mov #prtmdm,f		;pointer to the menu
+	mov #prtsav,a		;pointer to the save array
+	tst (a)			;anything saved?
+	beq 3$			;nope
+	clr (a)+		;don't restore this again
+1$:	tst menuvr(f)		;does this one have a variable?
+	beq 2$			;nope
+	mov (a)+,@menuvr(f)	;restore the value
+2$:	jsr pc,getnmi		;go to the next
+	bne 1$
+3$:	rest <f,a>
+	rts pc
+
+;adjust the line if the adjust flag is set
+prtajp:	tst pradjm		;are we in adjust mode?
+	beq prtaj9		;nope
+prtajl:	jsr f,acsav
+	mov prclin,a		;pointer to the line
+	mov a,b			;copy it
+	add #blhead,b		;pointer to the data
+	mov blused(a),c		;used count
+	beq 8$			;nothing on the line
+	ash #-2,c		;characters in line
+	save <b,c>		;will need these later
+	clr f			;this will be the count of spaces
+1$:	cmpb #40,2(b)		;space?
+	bne 2$			;nope
+	inc f
+2$:	add #4,b
+	sob c,1$
+	tst f			;any spaces?
+	beq 7$			;sorry, loser
+	mov prrmar,d		;the amount of space that needs filling in
+	sub (b),d		;the first place not used on the line
+	ble 7$			;exactly right! (or else the line is too big to fit!)
+	clr c			;for the divide
+	div f,c			;get the amount we need for each space
+	rest <f,b>		;count of chars and pointer into line
+	clr a			;amount to add to each character
+3$:	add a,(b)		;adjust this character
+	cmpb #40,2(b)		;space?
+	bne 4$			;nope
+	add c,a			;add in the quotient to this space
+	dec d			;exhauseted remainder yet?
+	blt 4$			;yup
+	inc a			;keep trying
+4$:	add #4,b
+	sob f,3$
+	add a,(b)		;in case anybody cares, the end
+	br 8$
+
+7$:	cmp (p)+,(p)+
+8$:	jsr f,acres
+prtaj9:	rts pc
+
+;right justify or center the line if the flags are set
+prrtcn:	tst prcenm		;center?
+	bne 1$			;yup
+	tst prrgtm		;right adjust?
+	beq 9$			;nope, do nothing
+1$:	jsr f,acsav
+	mov prclin,a		;pointer to the current line
+	mov blused(a),b		;amount used
+	beq 4$			;nothing on the line
+	mov b,prclpt		;make that the pointer
+	mov a,c			;pointer to data
+	add #blhead,c
+	add b,c			;pointer to the end of the data
+	mov (c),prvhps		;restore the proper hpos
+	mov #40,c		;insert regular spaces
+	jsr pc,prputc		;put it into the line
+	jsr pc,prputc		;twice
+	mov prclin,a
+	mov a,c			;pointer to data
+	add #blhead,c
+	add b,c			;pointer to the end of the data
+	mov (c),4(c)		;make the last space on the line be in the right place
+	mov (c),10(c)		;also, the marker after the last space
+	ash #-2,b		;count
+2$:	cmpb #40,-2(c)		;is this a real space?
+	bne 3$			;nope
+	movb #fixchr,-2(c)	;replace with a fixed space
+3$:	mov -4(c),(c)		;copy the line up one place
+	mov -2(c),2(c)
+	sub #4,c		;next
+	sob b,2$		;flush all non-fixed spaces in the line
+	mov #40,2(c)		;make the first thing on the line a real space
+	tst prcenm		;center?
+	bne 4$			;yup, leave the last space there
+	sub #4,blused(a)	;ignore the last space
+4$:	jsr f,acres
+	jsr pc,prtajl		;go adjust the line right or center it
+9$:	rts pc
+
+
+;put the character in c into the current line
+;also adds the size of the character to prvhps
+prputc:	save <a,b>
+	mov prclin,a		;get the line pointer
+	mov prclpt,b		;the current pointer
+	bne 3$			;if there has been a character put on this line already
+	mov prlefm,prvhps	;set the virtual horizontail poisition to the left margin
+3$:	add #6,b		;what it will be when done
+	cmp b,bllen(a)		;do we have enough
+	blo 1$			;yup
+	mov #10.*4,b		;add enough for 10 more characters
+	jsr pc,expand
+	bne 2$			;ok
+	noroom			;arg!!
+2$:	mov a,prclin		;in case it moved
+1$:	add #4,blused(a)	;4 more bytes used
+	add prclpt,a		;the current pointer
+	add #blhead,a		;point to the data
+	add #4,prclpt		;move pointer for the next time
+	mov prvhps,(a)+		;set in the current position
+	mov c,(a)+		;and set in the character
+	add prvhin,prvhps	;every character is the same size
+	mov prvhps,(a)		;put the end of this character in the line too
+	rest <b,a>
+	rts pc
+
+;This routine takes a printer line buffer pointer in prclin and prints it. For the
+;momement it assumes a multiwriter but at some point it will also work
+;for the lineprinter, although of course it won't be able to do everything.
+;The line buffers look like this:
+;	normal line header, with length
+;	.word position on line of this character in printer units
+;	.word character, including possibbly sub&super script, bold and underline bits, 
+;Among other things this routine will print the line backwards if that seems wise
+;It assumes the printer has been inited to the HINC value
+prtlin:	jsr f,acsav
+	jsr pc,prquit		;see if we should stop printing
+	mov prvvps,a		;current vertical position
+	jsr pc,prrelv		;move the printer to that position
+	mov prclin,a
+	tst blused(a)		;blank line?
+	beq 9$			;yup, just flush it
+	mov a,b			;copy line pointer
+	add #blhead,b		;get to the data
+	mov b,c			;copy data pointer
+	add blused(a),c		;get a pointer to the end
+	cmp -(c),-(c)		;get a pointer to the position of the last character
+	mov (b),e		;position of first character
+	sub prhpos,e		;distance to print head
+	bge 1$
+	neg e			;abs value
+1$:	mov (c),f		;position of last char
+	sub prhpos,f		;distance
+	bge 2$
+	neg f			;abs value
+2$:	cmp e,f			;is first or lat closer to printhead?
+	bhis 3$			;first is further than last
+	jsr pc,prtfwd		;setup to print forward
+	mov #4,f		;this is the constant for getting to the next character
+	br 4$
+3$:	jsr pc,prtrev		;setup to print in reverse
+	mov #-4,f		;constant to get to the next character
+	mov c,b			;b has the character index
+4$:	mov blused(a),a		;get the length
+	ash #-2,a		;as number of characters
+5$:	jsr pc,prtchr		;print the character pointed to by b at the right place
+	add f,b			;next character
+	sob a,5$
+9$:	add prvinc,prvvps	;the amount to move down
+	jsr pc,prpage		;go see about paging
+	jsr f,acres
+	rts pc
+
+;This routine takes a pointer in b to a "character". A character is two
+;words; the first is the printer address the character is to be printed
+;at; the second is the character itself, possibly with flags.
+prtchr:	save <c,a>
+	mov (b),a		;the place to move to
+	jsr pc,prrelt		;do a relative tab
+1$:	mov 2(b),c		;get the actual character
+	bit #atrund*400,c	;underline?
+	beq 2$			;nope
+	save c
+	mov #'_,c
+	jsr pc,prcout		;output the underline
+	mov #10,c		;followed by a backspace
+	jsr pc,prcout
+	rest c
+2$:	bit #atrbld*400,c	;bold?
+	beq 3$			;nope
+	jsr pc,prcout		;print it once
+	mov (b),a		;get the position
+	inc a
+	jsr pc,prrelt		;move over one increment
+	jsr pc,prcout		;print it a second time
+	mov (b),a		;get the position
+	add #2,a
+	jsr pc,prrelt		;move over two increments
+				;and fall through to print again
+3$:	jsr pc,prcout		;and print it
+	rest <a,c>
+	rts pc
+
+
+;Come here to see if the guy has typed stop-print
+;This needs to be changed when we have background print
+prquit:	jsr pc,tyip		;did he type anything?
+	beq 2$			;nope
+	save <a,f>
+	jsr pc,getkey		;get the key code
+	jsr pc,getnam		;get the name
+	cmp #chrprq,f		;is it stop-print?
+	bne 1$			;nope
+	jsr pc,prstop		;enter the quit loop
+1$:	rest <f,a>
+2$:	rts pc
+
+;Inserted command to stop printer
+prstop:	mov #prstms,erstat	;stopped message
+				;fall into prquip
+
+;Stop printing until either continue or quit is pressed
+prquip:	jsr f,acsav
+	jsr pc,prbfls		;flush out the buffer
+	jsr pc,erdisp		;display the message
+1$:	jsr pc,bell		;ding!
+	jsr pc,getkey		;get the next key typed
+	jsr pc,getnam		;get it's name
+	cmp #chrprc,f		;continue?
+	beq 7$			;yup
+	cmp #chrqui,f		;quit?
+	bne 1$			;nope
+	prabor
+7$:	clr erstat
+	jsr pc,erdisp		;clear out the printer stopped message
+	jsr pc,prtrsh		;reset the printer hardware in case someone munged with it
+	jsr f,acres
+	rts pc
+
+chrprq:	ding			;someday this will stop a background print
+chrprc:	ding			;someday this will continue a backgound print
+
+;Come here after typing a line on the printer, to see if we need to go to
+;the next page.
+prpage:	cmp prvvps,prbotm	;are we at or past the bottom margin?
+	blo prpag9		;nope, do nothing
+prnpag:	jsr f,acsav
+	jsr pc,prgbot		;go to the bottom of this page
+	clr prvpos		;now reset our position
+	clr prvvps		;also reset the virtual position
+	jsr pc,prgtop		;go to the top of the next page
+	tst prcnpm		;continous paper or not?
+	bne 8$			;continous, keep printing
+	mov #prpagm,erstat	;say that we need paper
+	jsr pc,prquip		;stop printing until cont is pressed
+
+8$:	jsr f,acres
+prpag9:	rts pc
+
+;Set to the top margin of the page
+prgtop:	save a
+	mov prtopm,a		;set to the top margin
+prgto1:	jsr pc,prrelv		;do a relative vertical
+	rest a
+	rts pc
+
+;Set to the real bottom of the page
+prgbot:	save a
+	mov prbot,a
+	br prgto1
+
+;Reset everything you can think of in the printer.
+prtrst:	clr pindnt		;reset the indent
+	jsr pc,prsetv		;set the right values in the right places
+	jsr pc,prtrsh		;reset the printer hardware
+	clr prvpos		;zero on the vertical
+	tst prcnpm		;continous paper?
+	bne 1$			;yup
+	mov prtopm,prvpos	;no, assume paper is put in at the top margin
+1$:	mov prvpos,prvvps	;set the virtual position there too
+	jsr pc,prgtop		;go to the top of the page
+	rts pc
+
+;reset the printer hardware
+prtrsh:	save c
+	mov #62,c
+	jsr pc,preout		;clear all tab stops
+	mov #11,c		;do a abs tab
+	jsr pc,preout
+	mov #1,c		;to zero, to bang against the right
+	jsr pc,prout
+	clr prhpos		;printer is at the right
+	jsr pc,prshsp		;set HINC
+	jsr pc,prsvsp		;set VINC
+	rest c
+	rts pc
+
+;Take the current inch values and convert them into printer units.
+prsetv:	jsr f,acsav
+	mov piwidt,a		;Get the width of the page
+	sub pitwid,a		;get the margin size
+	bge 1$			;positive?
+	clr a			;no, make it zero
+1$:	asr a			;divide it by 2
+	mov a,pilmar		;set the left margin
+	add pindnt,pilmar	;the indent gets added to the left margin
+	add pitwid,a		;get the right margin
+	mov a,pirmar		;set it
+	mov pilent,a		;Get the length of the page
+	sub pitlen,a		;get the margin size
+	bge 2$			;positive?
+	clr a			;no, make it zero
+2$:	asr a			;divide it by 2
+	mov a,pitopm		;set the top margin
+	add pitlen,a		;get the bottom margin
+	mov a,pibotm		;set it
+	mov #prcnvt,a		;pointer to the convert table
+3$:	mov (a)+,b		;pointer to the thing to be converted
+	beq 4$			;done
+	mov (b),c		;get the thing to be converted
+	mul (a)+,c		;the fudge factor
+	div #1000.,c
+	mov c,@(a)+
+	br 3$
+4$:	jsr f,acres
+	rts pc
+
+;Do a relative tab operation to the location in a
+prrelt:	save <a,c>
+	cmp #3777,a		;is it in reasonable range?
+	bhis 1$			;yup
+	mov #3777,a		;limit stop
+1$:	sub prhpos,a		;get the amount to move
+	beq 5$			;zero
+	mov #34,c		;FS
+	jsr pc,preout		;output without breaking, preceed with escape
+	mov #20,c		;this will be the high order part, default is move right
+	bit #1,a		;odd?
+	beq 2$			;no carry, don't have to set the 1/120th bit
+	bis #10,c		;add 1/120 to the value
+2$:	tst a			;negative or positive?
+	bge 3$			;positive, go right
+	bic #20,c		;go left
+	neg a
+3$:	asr a			;divide by two
+	save a			;save a
+	bit #176000,a		;make sure it's not too big
+	beq 4$
+	bpt
+4$:	ash #-7,a		;get the high 3 bits
+	bis a,c			;set into the character
+	jsr pc,prout		;output it
+	rest c			;get it back
+	bic #177600,c		;strip to 7 bits
+	jsr pc,prout		;output it
+	bhis 5$
+	jsr pc,prbfls		;output the buffer
+5$:	rest <c,a>
+	mov a,prhpos		;set the new hpos value
+	rts pc
+
+;Do a relative vertical tab operation to the location in a
+prrelv:	save <a,c>
+	sub prvpos,a		;get the amount to move
+	beq 4$			;zero
+	mov #34,c		;FS
+	jsr pc,preout		;output without breaking, preceed with escape
+	mov #60,c		;this will be the high order part, default is move up
+1$:	tst a			;negative or positive?
+	bge 2$			;positive, go up
+	bic #20,c		;go down
+	neg a
+2$:	save a			;save a
+	bit #176000,a		;make sure it's not too big
+	beq 3$
+	bpt
+3$:	ash #-7,a		;get the high 3 bits
+	bis a,c			;set into the character
+	jsr pc,prout		;output it
+	rest c			;get it back
+	bic #177600,c		;strip to 7 bits
+	jsr pc,prout		;output it
+	bhis 4$
+	jsr pc,prbfls		;output the buffer
+4$:	rest <c,a>
+	mov a,prvpos		;set the new vpos value
+	rts pc
+
+
+;set the HINC in the printer to the value in PRHINC
+prshsp:	save c
+	mov #37,c
+	jsr pc,preout		;send the set HINC command
+	mov prhinc,c
+prshs1:	bgt 1$			;make sure it's positive
+	neg c
+1$:	inc c			;printer subtracts one
+	jsr pc,prout
+	bhis 2$
+	jsr pc,prbfls		;output the buffer
+2$:	rest c
+	rts pc
+
+;set the VINC in the printer to the value in PRVINC
+prsvsp:	save c
+	mov #36,c
+	jsr pc,preout		;send the set VINC command
+	mov prvinc,c
+	br prshs1
+
+;set up the printer to print forward
+prtfwd:	save c
+	mov #65,c
+	jsr pc,preout		;set the printer to forward motion
+	tst prhinc		;need to make hinc positive
+	bgt 1$			;it is now
+	neg prhinc
+1$:	rest c
+	rts pc
+
+;set up the printer to print reverse
+prtrev:	save c
+	mov #66,c
+	jsr pc,preout		;set the printer to reverse motion
+	tst prhinc		;need to make hinc negative
+	blt 1$			;it is now
+	neg prhinc
+1$:	rest c
+	rts pc
+
+
+
+;output the character in c to the printer, keeping track of the resulting position
+;this routine is only for printing characters and cr
+prcout:	bit #200,c		;accent character?
+	bne 7$			;yup, special
+	jsr pc,prout		;put it into the buffer
+	bhis 1$			;room left?
+	jsr pc,prbfls		;flush out the buffer
+1$:	cmp #15,c		;cr?
+	beq 4$			;yes, special
+	cmp #10,c		;backspace?
+	beq 6$			;special
+	cmp #12,c		;linefeed?
+	beq 5$
+	add prhinc,prhpos	;indicate the carrige movement
+2$:	bge 3$			;make sure we didn't jam against the edge
+	clr prhpos		;yes, jsut set to zero
+3$:	rts pc
+
+4$:	bpt			;nobody should ever cr the printer
+;	mov prrlfm,prhpos	;the carriage moves to the left margin
+;	save c
+;	mov #12,c		;do a linefeed
+;	jsr pc,prcout
+;	rest c
+;	rts pc
+
+5$:	bpt			;nobody should ever lf it either
+;	add prvinc,prvpos	;indicate the vertical movement
+;	rts pc
+
+6$:	sub prhinc,prhpos
+	br 2$
+
+7$:	save c
+	cmpb #300,c		;up in the special range?
+	blos 10$		;yup
+	bic #177740,c		;flush extra bits, including upper/lower ness
+	asl c			;get a word index
+	add #fnteng,c		;english font table
+	tst prfrfm		;french print wheel?
+	beq 8$			;nope
+	add #fntfr-fnteng,c	;yup, french
+8$:	mov (c),c		;get the character(s) to print
+	beq 13$			;none
+9$:	jsr pc,prcout		;output the first one
+	swab c			;get the second one
+	bic #177400,c
+	beq 13$			;none
+	save c			;save it
+	mov #10,c		;do a backspace
+	jsr pc,prcout
+	rest c
+	br 12$
+
+10$:	beq 14$			;fixed space
+	cmp #cmdchr,c		;is it the magic commadn character?
+	bne 11$			;nope
+	mov #"OX,c		;print it as O overstrike X
+	br 9$
+11$:	mov #'?,c
+12$:	jsr pc,prcout
+13$:	rest c			;sometime we should fix these
+	rts pc
+14$:	movb #40,c		;regular space
+	br 12$
+
+
+;put the character in c into the printer buffer
+;sets condition codes for buffer nearly full
+;e.g.:
+;	jsr pc,prout
+;	bhis 1$
+;	jsr pc,prbfls		;buffer is full, flush it out
+
+prout:	movb c,@prbufp		;put in the character
+	inc prbufp		;for the next one
+	inc prbufc		;number of characters in the buffer
+	cmp #prblsz-10,prbufc	;set condition codes for plenty of room in the buffer
+	rts pc
+
+;output escape followed by character in c to multiwriter. Don't
+;allow an ETX break to occur.
+preout:	save c
+	mov #33,c
+	jsr pc,prout		;output the escape
+	rest c
+	br prout		;followed by the character
+
+;flush the buffer out to the printer. If there is more than one job and for
+;some reason the buffer can't be flushed, call the FLUSH routine to run the
+;other job
+prbfls:	jsr f,acsav
+1$:	cmp #nprblk,prblkc	;are there already enough outstanding blocks?
+	blos 5$		;yes, go hang
+	inc prblkc		;we will output one more block
+	mov #3,c		;the end of block character
+	jsr pc,prout		;put it into the buffer
+	mov #prbuf,a		;start of the buffer
+	mov prbufc,b		;total characters that need to be output
+	cmp #1,njobs		;more than one job?
+	bne 2$			;yup
+	mov b,c			;just blko all the characters
+	br 4$
+2$:	save prtcap		;cap to the printer
+	.ospac			;get the amount of available space
+	rest <,c>
+	bne 3$			;there is some avaialble
+	jsr pc,flush		;none avaiable, wait
+	br 2$			;try again
+3$:	cmp b,c			;is there more avaiable than we need?
+	bhis 4$			;no, use it all
+	mov b,c			;use exactly what we need
+4$:	save <a,c>		;pointer and count
+	neg (p)
+	save prtcap		;cap to the printer
+	$blko			;output the stuff
+	add c,a			;move the buffer pointer
+	sub c,b			;got this many out
+	bne 2$			;still got more to go
+	clr prbufc		;we have flushed all the characters
+	mov #prbuf,prbufp
+	jsr f,acres
+	rts pc
+
+5$:	save c
+	clr prtwai
+6$:	jsr pc,prtgrc		;get a reply character
+	beq 7$			;none, go wait
+	cmpb #6,c		;ack?
+	bne 6$			;nope, suprious
+	dec prblkc		;one less outstanding block
+	rest c
+	br 1$
+7$:	inc prtwai		;indicate waiting time
+	cmp #5,prtwai		;waited more than 5 seconds?
+	ble 8$			;yup, lose
+	jsr pc,flush		;wait for the printer to have some room
+	br 6$			;and try again
+8$:	jmp prtlos		;print not ready, flush it
+
+;get a reply character from the printer, return in c
+prtgrc:	cmp -(p),-(p)
+	save prtcap
+	movb #.ttpek,1(p)	;
+	$invok			;find out if there is a character
+	tst (p)+		;negative if none
+	blt 1$			;go wait
+	save prtcap
+	$byti			;get the character
+	rest c
+	clz
+	rts pc
+
+1$:	sez
+	rts pc
+
+
+;temp flush routine, pending timesharing
+flush:	save <#0,#60.>
+	$sleep			;wait one second
+	rts pc
+
+;open the multiwriter, put the cap in prtcap
+opnprt:	tst prtcap		;already open?
+	bne 2$			;yup
+	save <#-1,#prtnum,#.ttcap*400>	;create tty number prtnum
+	.invok
+	bne 1$
+	filerr
+1$:	rest prtcap		;the new printer cap
+	save <,#.timgo+.timgi,prtcap>
+	bis #.ttmov*400,(p)
+	$invok
+2$:	jsr pc,prtgrc		;get any reply characters
+	bne 2$			;till there are no more
+	clr prblkc		;no outstanding blocks
+	jsr pc,prbfls		;send a block out
+	save <#0,#6.>
+	$sleep			;wait one tenth of a second
+	jsr pc,prtgrc		;should be a reply
+	beq prtlos		;lost, no reply
+	clr prblkc		;no outstanding blocks
+	rts pc
+
+prtlos:	jsr pc,clspr1		;print not ready, close it
+	prtntr
+
+
+;close the multiwriter which is open on prtcap
+clsprt:	jsr pc,prgbot		;go to the bottom of the page
+clspr1:	jsr pc,prbfls		;flush out the buffer
+	mov prtcap,a
+	jsr pc,delcap
+	clr prtcap		;closed
+	rts pc
