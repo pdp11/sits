@@ -1049,6 +1049,10 @@ TVTCHK:	SAVE <,,#0>
 	RTS PC
 .ENDC
 
+.exami:	jsr pc,g1narg
+	
+
+
 .DEPOS:	JSR PC,G1NARG
 	MOV B,D
 	JSR PC,G1NARG
