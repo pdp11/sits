@@ -1,5 +1,5 @@
-;LISP - LIST PROCESSING INTERPRETER
-VERSIO==%FNAM2	;SAVE VERSION NO.
+; Lisp - List processing interpreter
+versio==%fnam2	;save version no.
 
 .TITLE	PDP11 LISP
 
@@ -17,20 +17,41 @@ VERSIO==%FNAM2	;SAVE VERSION NO.
 ; Modified 2/12/76 by EAK to use 2 word arithmetic
 ; Modified 2/29/76 by EAK to change ERROR, ERRSET, and
 ;	ERR and to add BOUNDP, REMOB, REVERSE and NREVERSE.
+; Modified 11/01/76 by GLD to move functions to an atom's
+;	plist & otherwise make function defunition and
+;	application more like Maclisp.
+; Modified 11/05/76 by GLD to make CAR/CDR of NIL NIL, and
+;	to add DEPOSIT and EXAMINE functions & BPORG variable.
+; Modified 7/20/77 by EAK to merge changes made by GLD into
+;	old version.  Also added instruction macros to make
+;	11s with losing instruction sets win.  Macros
+;	are SOB, SPL, MFPS, MTPS, MUL, DIV, ASH, XOR, SXT.
+;	Finally added IF and LOOP macros.
 
 ; Define symbols for various operating systems LISP11 can run under
 SITS==1
 TRANTR==2
 
-.IIF NDF  TS,	TS==SITS	; DEFAULT SYSTEM IS SITS
+.IIF NDF  TS,	TS==SITS	; SITS is default
 
-.IIF NDF  TOP,	TOP==100000	; ASSUME 16K
 
-.IIF EQ  TS-SITS,	PDP11==45
-.IIF EQ  TS-TRANTR,	PDP11==10
-.IIF EQ  TS,		PDP11==10
+.if eq  ts
+.iif ndf  pdp11,  pdp11==10
+.iif ndf  top,	top==100000	; assume 16K
+.endc
 
-.IIF EQ  TS-SITS,	.INSRT SITS;SITSS SYMS
+.if eq  ts-sits
+.iif ndf  pdp11, pdp11==45
+.iif ndf  top,	top==177700
+.insrt sits;lispm >
+.endc
+
+.if eq  ts-trantr
+.iif ndf  pdp11,  pdp11==10
+.iif ndf  top,	top==100000	; assume 16K
+.endc
+
+.iif ndf  asmfun,  asmfun==1
 
 
 R0=%0
@@ -42,13 +63,8 @@ R5=%5
 SP=%6
 PC=%7
 
-.XCREF	R1,R2,R3,SP,PC
+.XCREF	R0,R1,R2,R3,R4,R5,SP,PC
 
-	.=0		; NIL
-	.WORD -1,%NIL
-
-	.=34		;TRAP INSN VECTOR.
-	TRPX,0
 
 .IF EQ  TS
 PS==177776
@@ -62,45 +78,9 @@ SRS==175620		; DL11-E #2
 SRB==175622
 SXS==175624
 SXB==175626
-
 .ENDC
 
-;TOP OF STACK.
-	.=2000
-TOPSTK:	.WORD	OBPCEL			;FOR GARBAGE COLLECTOR
-	.WORD	TOPSTK,0,0,TOPERR	;RESTORED ON ERROR
-					;REACHING TOP LEVEL ERRSET.
-
-;TRAP INSN RTN.
-TRPX:	MOV	(SP)+,R4	;GET PC AFTER CALL.
-	MOV	R4,(SP)		;SET UP FOR RTS PC .
-	MOV	-(R4),R4	;DECODE TRAP INSN.
-	JMP	@TRPTAB-TRAP(R4)
-
-TRPTAB:	EVALA,ALLOC,ERRORA,ASSQA,INRAN1,GETNUM
-	NCONS,CONS,XCONS,RDCHR,GPAST,PRINT,READ0
-	LSUBRA,MAKNUM,GETNUM,SFT3L,REREAD
-
-.EVAL==0
-.ALLOC==2
-.ERROR==4		;ERROR CODE IN NEXT WORD.
-.ASSOC==6		;ALMOST LIKE ASSQ.
-.INRN1==10
-.GTNM1==12
-.NCONS==14
-.CONS==16
-.XCONS==20
-.RDCHR==22
-.GPAST==24
-.PRINT==26		;FOR EXTERNAL USE.
-.READ==30		;FOR EXTERNAL USE.
-.LSUBR==32		;EVAL AND STACK ARGS.
-.MKNUM==34		;CREATE NUMBER.
-.GTNUM==36		;GET VALUE OF NUMBER.
-.SFT3L==40		;INTERNAL TO PRINT, READ.
-.REREA==42		;RE-READ LAST CHAR READ.
-
-.SBTTL	MACROS
+.sbttl	Macros
 
 .macro	typest string
 	jsr r5,types
@@ -108,34 +88,275 @@ TRPTAB:	EVALA,ALLOC,ERRORA,ASSQA,INRAN1,GETNUM
 	.endm typest
 
 
-.macro	push	arg0,arg1,arg2,arg3,arg4,arg5,arg6,arg7
-	.irp d,<arg0,arg1,arg2,arg3,arg4,arg5,arg6,arg7>
-	  .if nb  d
-	    mov	d,-(sp)
+.macro	push	a0,a1,a2,a3,a4,a5,a6,a7
+	.irp d,<a0,a1,a2,a3,a4,a5,a6,a7>
+	  .if idn  d,#0
+	    clr -(sp)
+	  .iff
+	    .lif nb  d
+	      mov d,-(sp)
 	  .endc
 	  .endm
 	.endm push
 
 
-.macro	pop	arg0,arg1,arg2,arg3,arg4,arg5,arg6,arg7
-	.irp d,<arg0,arg1,arg2,arg3,arg4,arg5,arg6,arg7>
-	  .if nb  d
-	    mov	(sp)+,d
+.macro	pop	a0,a1,a2,a3,a4,a5,a6,a7
+	.irp d,<a0,a1,a2,a3,a4,a5,a6,a7>
+	  .if idn  d,*
+	    tst (sp)+
+	  .iff
+	    .lif nb  d
+	      mov (sp)+,d
 	  .endc
 	  .endm
 	.endm pop
+
+.sbttl	Flow of control macros
 
-.IF EQ  PDP11-10
+;IF macro: Generates code that executes the if clause
+;if the specified conditon is true, the else clause if
+;it is false.  The else clause is not required.  Example:
+;	if eq,<
+;	  mov r0,r1
+;	  mov (r1)+,r2
+;	  >
+;	else <
+;	  jsr pc,foo
+;	  >
+
+.macro	if cond,code
+	.nlist
+	gncnt===gncnt+1
+	.irp foo,\gncnt
+	.iif p1,  .word 0
+	.else
+	  %.itmp===<g'foo-<.+2>>/2
+	  .iif gt %.itmp-377,	.error Branch out of range
+	  .iif lt %.itmp+377,	.error Branch out of range
+	  .iif eq  <b'cond>&400,  <b'cond>+%.itmp+400
+	  .ielse		  <b'cond>+%.itmp-400
+	  .endc
+	code
+g'foo===.
+ifcnt===foo
+	.endm .irp
+	.list
+	.endm if
+
+.macro	else code
+	gncnt===gncnt+1
+	.irp foo,\ifcnt
+	.irp bar,\gncnt
+	br g'bar
+g'foo===.
+	code
+g'bar===.
+	.endm
+	.endm
+	.endm else
+
+gncnt===777		;gensym count.
+
+
+; LOOP macro allows loops without labels.  Use RPTL and EXITL
+; to repeat loop and exit loop.  Both take branch condition arguments.
+; If condition arg is null, then BR is used, i.e. unconditional.
+; End of CODE falls out of loop unless specific RPTL is used.
+
+;Example of LOOP macro:
+;loop <	  cmpb r0,(r1)+		; found char yet?
+;	  exitl eq		; exit loop on equal
+;	  inc r2		; not found
+;	  cmp r2,r5		; too many?
+;	  rptl lt		; no, keep going
+;	  jmp error		; too many
+;	  >
+;				; EXITL comes here
+
+;Loop defines two lables around the code argument,
+;the first for looping back via the RPTL macro, the
+;second for exiting the loop via the EXITL macro.
+;Labels are of the form %Lnv or %Xnv where n signifies
+;that this is the nth use of the LOOP macro, and v is
+;the level of nesting of this loop macro.  Up to 7
+;levels of nesting are allowed.
+	%level===0
+	%loopn===0
+.macro	loop code
+	.iif eq  %level,  %loopn===%loopn+1
+	%level===%level+1
+	.if gt  <10*%loopn>+%level-7777
+	 .error	Too many loops and/or nestings.
+	 .mexit
+	 .endc
+	.if gt  %level-7
+	 .error	Too many loop nestings (7 allowed).
+	 .mexit
+	 .endc
+	.irp	n,\<<10*%loopn>+%level>
+	  %l'n===.	;loop back to here.
+	  code
+	  %x'n===.	;exit to here.
+	  .endm .irp
+	%level===%level-1
+	.endm loop
+
+.macro	rptl cond
+	.if eq  %level
+	 .error	RPTL not inside LOOP
+	 .mexit
+	 .endc
+	.irp	n,\<<10*%loopn>+%level>
+	  .iif b  cond,	br %l'n	;loop back.
+	  .ielse	b'cond %l'n
+	  .endm	.irp
+	.endm rptl
+
+; SORL expands into a SOB instruction back to the last LOOP
+; point.  SORL takes one arg, a register to use with the SOB
+; instruction.
+.macro	sorl r
+	.if eq  %level
+	 .error SORL not inside LOOP
+	 .mexit
+	 .endc
+	.irp n,\<<10*%loopn>+%level>
+	  sob r,%l'n
+	  .endm .irp
+	.endm sorl
+
+
+.macro	exitl cond
+	.if eq  %level
+	 .error EXITL not inside LOOP
+	 .mexit
+	 .endc
+	.irp n,\<<10*%loopn>+%level>
+	  .iif b  cond,	br %x'n	;exit.
+	  .ielse	b'cond %x'n
+	  .endm	.irp
+	.endm exitl
+
+.sbttl	Instruction macros
+
+.if ne  pdp11-03
+.if ne  pdp11-34
+
+; MTPS and MFPS macros simulate PS intructions on 11/03 (LSI)
+; and 11/34 processors.
+.macro	mtps src
+	movb src,@#ps
+	.endm mtps
+
+.macro	mfps dst
+	movb @#ps,dst
+	.endm mfps
+
+.endc
+.endc
+
+
+.if ne  pdp11-45
+.if ne  pdp11-70
+
+; SPL macro changes the the priority to its argument. It
+; (unfortunately) does this with a MOV, thus clobbering
+; the condition codes and such.
+.macro	spl n
+	.iif ne  n,	mtps #n*40
+	.else
+	.iif eq  pdp11-03,	mtps #0
+	.ielse			clrb @#ps
+	.endc
+	.endm spl
+
+.endc
+.endc
+
+
+.if eq  pdp11-10
+
 ; SOB macro expands into code which performs identically to
 ; the SOB instruction found on more powerfull 11 processors
 .macro	sob r,addr
 	dec r
 	bne addr
-	.endm sob
+.endm
 
-.ENDC
+; RTT macro expands into a RTI.  This is so RTTs can be used in
+; places where they would be called for on 11/40s, 11/45s etc.
+.macro	rtt
+	rti
+.endm
+
+
+; XOR macro simulates XOR instruction on 11/45.
+; Caution: this macro is not intended to work with
+; (Rn)+, -(Rn) or (SP) destinations.
+.macro	xor r,d
+	mov r,-(sp)
+	bic d,(sp)
+	bic r,d
+	bis (sp)+,d
+.endm
+
+
+; SXT macro performs sign extend as on PDP11/45.
+.macro	sxt d
+	if mi,<
+	  mov #-1,d
+	  >
+	else <
+	  clr d
+	  >
+.endm
+
+
+; ASH macro generates a series of ASR or ASL instructions to
+; simulate the 11/45 ASH instruction.
+.macro	ash src,r
+.ntype %.m,r
+.iif ne  %.m&70,	.error ASH dst must be register
+.ntype %.m,src
+.iif ne  %.m-27,	.error ASH macro must have constant shift
+%.m===0'src
+	.if ge  %.m
+	 .rept %.m
+	  asl r
+	  .endr
+	.iff
+	 .rept -%.m
+	  asr r
+	  .endr
+	.endc
+.endm
+
+
+; MUL macro generates call to either MUL1 or MUL2 depending upon
+; whether register destination is even or odd.  Simulates 11/45 MUL.
+.macro	mul src,r
+.ntype %.m,r
+.iif ne  %.m&70,	.error MUL dst must be register
+	push src,r
+	.iif ne  %.m&1,	jsr r5,mul1
+	.ielse		jsr r5,mul2
+	pop r
+	.iif eq  %.m&1,	pop r+1
+.endm
+
+
+; DIV macro generates call to DIV2 to simulate 11/45 DIV instruction.
+.macro	div src,r
+.ntype %.m,r
+.iif ne  %.m&70,	.error DIV dst must be register
+	push r,r+1,src
+	jsr r5,div2
+	pop r+1,r
+.endm
+
+.endc
 
-.SBTTL	FORMATS
+.sbttl	Formats
 
 ;Register usage
 ;R0 - always saved/restored across a subr call 
@@ -172,11 +393,155 @@ TRPTAB:	EVALA,ALLOC,ERRORA,ASSQA,INRAN1,GETNUM
 ;				   \|/			   \|/
 ;				1st 4 chars of pname	2nd 4 chars of pname
 
-	.SBTTL	TOP LEVEL
+;TOP OF STACK.
+	.=2000
+TOPSTK:	.WORD OBPCEL			;FOR GARBAGE COLLECTOR
+	.WORD TOPSTK,0,0,TOPERR		;RESTORED ON ERROR
+TOPST1:					;REACHING TOP LEVEL ERRSET.
+
+
+;TRAP HANDLER.
+TRPX:	MOV (SP)+,R4		;GET PC AFTER CALL.
+	MOV R4,(SP)		;SET UP FOR RTS PC .
+	MOV -(R4),R4		;DECODE TRAP INSN.
+	TSTB R4 		;IS THE CALL BIT SET?
+	IF PL,<
+	  JMP @TRPTAB-TRAP(R4)
+	  >
+	JMP CALL
+
+
+TRPTAB:	EVALA,ALLOC,ERRORA,ASSQA,INRAN1,GETNUM
+	NCONS,CONS,XCONS,RDCHR,GPAST,PRINT,READ0
+	LSUBRA,MAKNU1,GETNUM,SFT3L,REREAD
+
+.EVAL==0
+.ALLOC==2
+.ERROR==4		;ERROR CODE IN NEXT WORD.
+.ASSOC==6		;ALMOST LIKE ASSQ.
+.INRN1==10
+.GTNM1==12
+.NCONS==14
+.CONS==16
+.XCONS==20
+.RDCHR==22
+.GPAST==24
+.PRINT==26		;FOR EXTERNAL USE.
+.READ==30		;FOR EXTERNAL USE.
+.LSUBR==32		;EVAL AND STACK ARGS.
+.MKNUM==34		;CREATE NUMBER.
+.GTNUM==36		;GET VALUE OF NUMBER.
+.SFT3L==40		;INTERNAL TO PRINT, READ.
+.REREA==42		;RE-READ LAST CHAR READ.
+
+.if eq  pdp11-10
+
+; MUL1 multiplies two integers, producing a single percision product.
+
+;	ARGS:				VALS:
+; SP ->	A			 SP ->	P
+;	B
+
+mul1:	push r1,r2		; save regs
+	mov 6(sp),r1		; multiplicand
+	mov 10(sp),r2		; multiplier
+	clr 10(sp)		; clear product accumulator
+loop <	  ror r2		; divide multiplier by 2, testing lowest bit
+	  exitl eq		; nothing left
+	  if cs,<
+	    add r1,10(sp)	; if bit is 1 then add multiplicand to product
+	    >
+	  asl r1		; double multiplicand
+	  clc			; so ROR is logical shift
+	  rptl 			; and repeat.
+	  >
+	if cs,<
+	  add r1,10(sp)		; one last add necessary if low bit was 1
+	  >
+	pop r2,r1,(sp)		; restore regs, remove arg2 from stack
+	rts r5
+
+
+; MUL2 is multiplies two integers producing a double percision product.
+
+;	ARGS: 				VALS:
+; SP ->	A			 SP ->	P hi
+;	B				P lo
+
+mul2:	push r0,r1,r2		; save regs
+	clr r0			; multiplicand
+	mov 6(sp),r1		; ...
+	mov 10(sp),r2		; multiplier
+	clr 6(sp)		; clear product accumulator
+	clr 10(sp)		; ...
+loop <	  ror r2		; divide multiplier by 2, testing lowest bit
+	  exitl eq		; nothing left
+	  if cs,<
+	    add r1,10(sp)	; if bit is 1 then add multiplicand to product
+	    adc 6(sp)		; ...
+	    add r0,6(sp)	; ...
+	    >
+	  asl r1		; double multiplicand
+	  rol r0		; will never set carry, so ROR above is ok
+	  rptl
+	  >
+	if cs,<
+	  add r1,10(sp)		; one last add necessary if low bit was 1
+	  adc 6(sp)		; ...
+	  add r0,6(sp)
+	  >
+	pop r2,r1,r0		; restore regs
+	rts r5
+
+
+; DIV2 divides a double word quantity by a single word
+; quantity yielding a quotient and remainder.  It is meant
+; to simulate the DIV instruction found on reasonable 11s.
+
+;	ARGS:			VALS:
+; SP ->	divisor		 SP ->	remainder
+;	dividend lo		quotient
+;	dividend hi
+
+div2:	push r0,r1,r2,r3,r4	; save regs
+	mov 22(sp),r0		; dividend hi
+	mov 20(sp),r1		; dividend lo
+	mov 16(sp),r2		; divisor
+	if mi,<
+	  neg r2		; negate divisor and dividend
+	  com r0		; double word negate
+	  neg r1		; ...
+	  adc r0		; ...
+	  >
+	clr r3
+	mov #16.,r4
+loop <	  asl r3
+	  rol r1
+	  rol r0
+	  cmp r2,r0
+	  if le,<
+	    sub r2,r0
+	    inc r3
+	    >
+	  sorl r4
+	  >
+	mov r3,22(sp)
+	mov r0,20(sp)
+	pop r4,r3,r2,r1,r0	; restore regs
+	pop (sp)
+	rts r5
+
+.endc
+
+.sbttl	Top level
 
 ;ENTRY POINT TO LISP.
-BEG:	MOV	#TOPSTK,SP
-	MOV	#TOPSTK,ERRSTK
+BEG:	MOV #TOPSTK,SP
+	MOV #TOPSTK,ERRSTK
+	CLR @#0			; NIL
+	CLR @#2
+	MOV #TRPX,@#34
+	CLR @#36
 .IF EQ TS-SITS
 	JSR PC,TSINIT		; SO MANY CROCKS, DON'T WANT THEM HERE
 .ENDC
@@ -189,102 +554,123 @@ BEG:	MOV	#TOPSTK,SP
 	MOV #100,@#TKS		; SET UP TTY INPUT INTS.
 	MOV #100,@#SRS
 .ENDC
-	CLR	PROGPC		; NO PROG FORMS
-	CLR	ERRFLG
-	CLR	ALIST
-	JSR	PC,GC		; GARBAGE COLLECT LIST SPACE
-
+	CLR PROGPC		; NO PROG FORMS
+	CLR ERRFLG
+	CLR ALIST
+	JSR PC,GC		; GARBAGE COLLECT LIST SPACE
+	CLR PROGPC		; NO PROG FORMS
+	CLR ERRFLG
+	CLR ALIST
+	JSR PC,GC		; GARBAGE COLLECT LIST SPACE
 
 ;ERROR AT TOP LEVEL COMES HERE. THE STUFF ABOVE
 ;THE TOP OF THE STACK APPEARS AS IF IT HAD BEEN SAVED BY
 ;AN ERRSET CALLED FROM TOPERR-2. WHEN NOT INSIDE AN ERRSET,
 ;ERROR WILL THINK IT'S INSIDE THAT PSEUDO-ERRSET.
-TOPERR:	MOV	#TOPSTK,SP
+
+;ERROR AT TOP LEVEL COMES HERE. THE STUFF ABOVE
+;THE TOP OF THE STACK APPEARS AS IF IT HAD BEEN SAVED BY
+;AN ERRSET CALLED FROM TOPERR-2. WHEN NOT INSIDE AN ERRSET,
+;ERROR WILL THINK IT'S INSIDE THAT PSEUDO-ERRSET.
+TOPERR:	MOV #TOPST1,SP
+	MOV #TOPERR,-(SP)	;SET UP TOP-LEVEL ERRSET FRAME
+	CLR -(SP)
+	CLR -(SP)
+	MOV #TOPSTK,-(SP)
+	MOV #OBPCEL,-(SP)
+	MOV #.P,$PLUS		; SET + TO +
+	MOV #STAR,R1		; SET * TO *
 
 ;TOP LEVEL LOOP.
-TLOOP:	MOV	#.P,$PLUS	; SET + TO +
-	MOV	#STAR,R1	; SET * TO *
-1$:	MOV	R1,$STAR
-	JSR	PC,PRINT	; TYPE OUT LAST EVALUATION
-	CLR	SILENT		; TURN ON OUTPUT.
-	JSR	PC,TERPRI	; FOLLOW WITH A NEWLINE
-	MOV	$MINUS,$PLUS	; SET LAST FORM TYPED IN
-	JSR	PC,READ		; READ ANOTHER
-	MOV	R1,$MINUS	; SET CURRENT FORM
-	JSR	PC,EVALA	; EVAL IT
-	BR	1$
+TLOOP:	MOV R1,$STAR
+	JSR PC,PRINT		; TYPE OUT LAST EVALUATION
+	CLR SILENT		; TURN ON OUTPUT.
+	JSR PC,TERPRI		; FOLLOW WITH A NEWLINE
+	MOV $MINUS,$PLUS	; SET LAST FORM TYPED IN
+	JSR PC,READ		; READ ANOTHER
+	MOV R1,$MINUS		; SET CURRENT FORM
+	JSR PC,EVALA		; EVAL IT
+	BR TLOOP
 
 ;TRAP .ERROR COMES HERE.
-ERRORA:	MOV	@(SP),R1	; GET ERROR CODE
-	MOV	ERRT(R1),ERRC
-	MOV	#ERRM,R1
+ERRORA:	MOV @(SP),R1		; GET ERROR CODE
+	MOV ERRT(R1),ERRC
+	MOV #ERRM,R1
+	TRAP .LSUBR		;FAKE AN LSUBR CALL AND FALL INTO ERROR:
 
 ;LSUBR -- 0 TO 2 ARGS
-ERROR:	MOV	ERRSTK,SP	; RESTORE STACK PTR
-	TRAP	.LSUBR		; PUT ARGS ON STACK
-	DEC	R3		; SEE HOW MANY ARGS
-	BMI	ER1		; NONE, RETURN NIL (R1)
-	BEQ	1$		; ONE, IT IS MSG TO PRINT
-	MOV	(SP)+,R1	; TWO ARGS, SECOND IS DATUM TO PRINT
-	JSR	PC,PRIN1	; PRINT IT, NO NEWLINE
-1$:	MOV	(SP)+,R1	; MSG TO PRINT
-	JSR	PC,PRINC	; PRINT MSG WITHOUT SLASHIFICATION
-	BR	ER1
+ERROR:
+.LIF EQ  TS-SITS
+	JSR PC,TYI.S		;RESTORE TTY INPUT, IF NECESSARY
+	DEC R3			; SEE HOW MANY ARGS
+	BMI ER2			; NONE, RETURN NIL (R1)
+	IF NE,<
+	  MOV (SP)+,R1		; TWO ARGS, SECOND IS DATUM TO PRINT
+	  JSR PC,PRIN1		; PRINT IT, NO NEWLINE
+	  >
+	MOV (SP)+,R1		; MSG TO PRINT
+	JSR PC,PRINC		; PRINT MSG WITHOUT SLASHIFICATION
+ER2:	MOV ERRSTK,SP		; RESTORE STACK PTR
+	BR ER1
 
 ;SUBR - CAUSE AN ERROR
-ERR:	MOV	ERRSTK,SP	; RESTORE STACK PTR
-	TST	R1		; ANY ARGS?
-	BEQ	ER1		; NO, JUST CAUSE SIMPLE ERROR
-	MOV	R1,R2		; YES, FIRST IS VALUE TO RETURN
-	MOV	(R2)+,R1	; ...
-	MOV	(R2),R2		; SECOND IS FLAG
-	BEQ	1$
-	TST	(R2)		; IF NON-NIL THEN EVAL AFTER POPPING
-	BNE	2$
-1$:	TRAP	.EVAL		; EVAL ARG TO RETURN
-	BR	ER1
-2$:	POP	ERRFLG,ERRSTK,PROGPC,ALIST
-	TRAP	.EVAL		; NOW EVAL ARG
-	RTS	PC
+ERR:	MOV ERRSTK,SP		; RESTORE STACK PTR
+	TST R1			; ANY ARGS?
+	BEQ ER1			; NO, JUST CAUSE SIMPLE ERROR
+	MOV R1,R2		; YES, FIRST IS VALUE TO RETURN
+	MOV (R2)+,R1		; ...
+	MOV (R2),R2		; SECOND IS FLAG
+	IF EQ,<
+	  TRAP .EVAL		; EVAL ARG TO RETURN
+	  BR ER1
+	  >
+	TST (R2)		; IF NON-NIL THEN EVAL AFTER POPPING
+	POP ERRFLG,ERRSTK,PROGPC,ALIST
+	TRAP .EVAL		; NOW EVAL ARG
+	RTS PC
 
 ;FSUBR - RETURNS (CONS (EVALA ARG)) IF NO ERROR. IF ERROR, RETURNS NIL.
-ERRSET:	PUSH	ALIST,PROGPC,ERRSTK,ERRFLG
-	MOV	SP,ERRSTK
-	MOV	R1,R2
-	MOV	(R2)+,R1	; FORM TO EVAL
-	MOV	(R2),R2		; FLAG?
-	BEQ	1$
-	MOV	(R2),ERRFLG
-1$:	TRAP	.EVAL
-	TRAP	.NCONS		; INDICATE NO ERROR
-ER1:	POP	ERRFLG,ERRSTK,PROGPC,ALIST
-	RTS	PC
+ERRSET:	PUSH ALIST,PROGPC,ERRSTK,ERRFLG
+	MOV SP,ERRSTK
+	MOV R1,R2
+	MOV (R2)+,R1		; FORM TO EVAL
+	MOV (R2),R2		; FLAG?
+	IF NE,<
+	  MOV (R2),ERRFLG
+	  >
+	TRAP .EVAL
+	TRAP .NCONS		; INDICATE NO ERROR
+ER1:	POP ERRFLG,ERRSTK,PROGPC,ALIST
+	RTS PC
 
 	.SBTTL	ALLOCATION AND GARBAGE COLLECTION
 
 ;ALLOCATE A PAIR. PUT ADDR OF CDR IN R4. 
 ;DON'T CLOBBER ANYTHING ELSE.
-ALLOC:	MOV	FREEL,R4	; GET FREE LIST PTR
-	BEQ	2$		; GC IF NECESSARY.
-1$:	TST	(R4)+		; POINT TO CDR.
-	MOV	(R4),FREEL	; UPDATE FREE LIST
-	RTS	PC
-2$:	JSR	PC,GC		; GARBAGE COLLECT LIST SPACE
-	MOV	FREEL,R4	; GET FREE LIST PTR
-	BNE	1$		; NOTHING RECLAIMED
-	TRAP	.ERROR
-	0
+ALLOC:	MOV FREEL,R4		; GET FREE LIST PTR
+	IF EQ,<
+	  JSR PC,GC		; GARBAGE COLLECT LIST SPACE
+	  MOV FREEL,R4		; GET FREE LIST PTR
+	  IF EQ,<		; NOTHING RECLAIMED
+	    TRAP .ERROR
+	    0
+	    >
+	  >
+	TST (R4)+		; POINT TO CDR.
+	MOV (R4),FREEL		; UPDATE FREE LIST
+	RTS PC
 
-GC:	MOV	R0,-(SP)	;SAVE REGS FOR MARKING.
-	MOV	R1,-(SP)
-	MOV	R2,-(SP)
-	MOV	R3,-(SP)
-	MOV	#GCBTAB,R1	;CLEAR BIT TABLE.
-	MOV	#GCTLEN/2,R2
-1$:	CLR	(R1)+
-	SOB	R2,1$
-	MOV	SP,MARKSP
-	MOV	SP,R3		;START MARKING AT BOOTTOM OF STACK.
+GC:	MOV R0,-(SP)		;SAVE REGS FOR MARKING.
+	MOV R1,-(SP)
+	MOV R2,-(SP)
+	MOV R3,-(SP)
+	MOV #GCBTAB,R1		;CLEAR BIT TABLE.
+	MOV #GCTLEN/2,R2
+loop <	  CLR (R1)+
+	  SORL R2
+	  >
+	MOV SP,MARKSP
+	MOV SP,R3		;START MARKING AT BOOTTOM OF STACK.
 
 MARKL:	MOV	(R3)+,R1	;NEXT ITEM OFF STACK.
 	BIC	#2,R1
@@ -323,6 +709,7 @@ MARKLN:	CMP	R3,#TOPSTK	;ALL WDS IN PRE-GC STACK TRACED?
 	MOV	#GCBTAB,R1	;ADDR OF BIT TABLE.
 	MOV	#IMPLSP,R2	;PTR INTO FS.
 	MOV	#FREEL,R4	;PTR TO TAIL OF FREE LIST.
+	CLR FREEN		;VARIABLE TO COUNT FREE CELLS FOR USER REFERENCE
 GCSWL0:	MOV	(R1)+,R3	;GET A BIT TAB WRD.
 GCSWLP:	ROR	R3		;LOOK AT NEXT BIT.
 	BCS	GCSWM
@@ -330,6 +717,7 @@ GCSWLP:	ROR	R3		;LOOK AT NEXT BIT.
 	CLR	(R2)+
 	MOV	R2,R4		;ALSO CLEAR THE CELL.
 	CLR	(R2)+
+	INC FREEN		;COUNT OF FREE CELLS
 	BR	GCSWN
 GCSWM:	ADD	#4,R2		;CELL MKD - SKIP IT.
 GCSWN:	BIT	#77,R2
@@ -343,14 +731,16 @@ GCSWN:	BIT	#77,R2
 	RTS	PC
 
 ;TEST WHETHER R1 -> FREE STORAGE.
-INRAN1:	BIT	#3,R1
-	BEQ	1$
-	SEC			;NOT MULT. OF 4, SAY NO.
-	RTS	PC
-1$:	CMP	R1,LOCELL	;IN RANGE?
-	BLO	2$
-	CMP	HICELL,R1
-2$:	RTS	PC
+INRAN1:	BIT #3,R1
+	IF NE,<
+	  SEC 			;NOT MULT. OF 4, SAY NO.
+	  RTS PC
+	  >
+	CMP R1,LOCELL		;IN RANGE?
+	IF HIS,<
+	  CMP HICELL,R1
+	  >
+	RTS PC
 
 MARKTB:	.BYTE	1,2,4,10,20,40,100,200
 
@@ -371,9 +761,10 @@ PRINC:	MOV	PC,OUTTYP
 PRIN1:	CLR	OUTTYP
 
 ;PRINT LIST <- R1.  DON'T CLOBBER R2, R3.
+;RETURN T
 PRIN:	MOV	R2,-(SP)
 	MOV	R1,-(SP)
-	BEQ	PRATOM		;IF NIL THEN TREAT AS ATOM
+	BEQ	PRNIL
 	TRAP	.GTNM1		;IF NUMBER, PUT IT IN R1, R2.
 	BCC	PRNUM1
 	MOV	(SP),R1		;.GTNM1 CLOBBERED R1.
@@ -382,14 +773,15 @@ PRIN:	MOV	R2,-(SP)
 
 	CLR	R2
 	TYPEST	^"#"
-PRNUM1:	MOV	R3,-(SP)
-	TST	R2
-	BPL	1$
-	TYPEST	^"-"		;NEGATIVE, TYPE THE MINUS
-	NEG	R1		;AND NEGATE THE NO.
-	ADC	R2
-	NEG	R2
-1$:	MOV	#10.,-(SP)	;NUM DIGITS TO HANDLE.
+PRNUM1:	MOV R3,-(SP)
+	TST R2
+	IF MI,<
+	  TYPEST ^"-"		;NEGATIVE, TYPE THE MINUS
+	  NEG R1		;AND NEGATE THE NO.
+	  ADC R2
+	  NEG R2
+	  >
+	MOV	#10.,-(SP)	;NUM DIGITS TO HANDLE.
 	CLR	R3		;INDICATE ZERO SUPP. ON.
 	ASL	R1		;NORMALIZE.
 	ROL	R2
@@ -410,7 +802,8 @@ PRNUM1:	MOV	R3,-(SP)
 	BEQ	4$		;PRINT ONE 0.
 	TST	(SP)+
 	MOV	(SP)+,R3
-PRRET:	MOV	(SP)+,R1
+PRRET:	TST (SP)+
+	MOV #T,R1
 	MOV	(SP)+,R2
 	RTS	PC
 
@@ -425,15 +818,19 @@ PRNEXT:	MOV	2(R1),-(SP)	;SAVE CDR, PRINT CAR.
 	MOV	(SP)+,R1
 	BEQ	PRLIS1		;IF END OF LIST, PRINT ")".
 	TRAP	.INRN1
-	BLO	1$		;IF ENDED BY NON-NIL, PRINT AS DOTTED PAIR.
-	CMP	(R1),#-1
-	BEQ	1$
-	TYPEST	^" "		;SPACES BETWEEN LIST ELTS.
-	BR	PRNEXT
-1$:	TYPEST	^"."
+	IF HIS,<		;IF ENDED BY NON-NIL, PRINT AS DOTTED PAIR.
+	  CMP (R1),#-1
+	  IF NE,<
+	    TYPEST ^" "		;SPACES BETWEEN LIST ELTS.
+	    BR PRNEXT
+	    >
+	  >
+	TYPEST	^"."
 	JSR	PC,PRIN
 PRLIS1:	TYPEST	^")"
 	BR	PRRET		;POP R1 AND RETURN.
+
+PRNIL:	MOV #NIL,R1
 
 ;PRINT A LITERAL ATOM.
 PRATOM:	MOV	@2(R1),R1
@@ -527,13 +924,20 @@ RUBPRT:	CLR	OUTTYP
 	TYPEST	^" "
 	RTS	PC
 ;SUBR -- READ IN AN OBJECT.
-READ:	TRAP	.READ
+READ:
+.LIF EQ  TS-SITS
+	MOV PC,READF		;SET FLAG FOR NOT ECHOING INTO OUTPUT FILES
+	TRAP	.READ
 	BEQ	READ		;RETRY IF RUBBED OUT.
 READX:	CMP	#177,THSCHR	;IF LAST CHAR WAS RUBOUT,
-	BNE	READXT
-	JSR	PC,RUBPRT	;PRINT RUBBED-OUT LIST,
-	CLR	NXTCHR
-	BR	READ0		;RETRY.
+	IF EQ,<
+	  JSR	PC,RUBPRT	;PRINT RUBBED-OUT LIST,
+	  CLR	NXTCHR
+	  BR	READ0		;RETRY.
+	  >
+.LIF EQ  TS-SITS
+	CLR READF
+	CLZ
 READXT:	RTS	PC
 
 READ0:	TRAP	.GPAST		;TRAP	.READ   COMES HERE.
@@ -610,12 +1014,14 @@ RDRUB3:	MOV	R4,(SP)		;MOVE TO PREVIOUS LINK,
 	CLR	2(R4)		;SET ITS CDR TO NIL.
 	MOV	(R1),R1		;ELT. RUBBED OUT.
 	CMP	R1,#TOPSTK	;SEE IF INUM
-	BLO	10$
-	BIT	#1,R1		;SEE IF NUM
-	BNE	10$
-	CMP	(R1),#-1	;IF ELT. IS LIST,
-	BNE	RDRUB4		;JUST RUB OUT THE ")".
-10$:	JSR	PC,RUBPRT	;PRINT ATOM RUBBED OUT.
+	IF HIS,<
+	  BIT #1,R1		;SEE IF NUM
+	  IF EQ,<
+	    CMP (R1),#-1	;IF ELT. IS LIST,
+	    BNE RDRUB4		;JUST RUB OUT THE ")".
+	    >
+	  >
+	JSR	PC,RUBPRT	;PRINT ATOM RUBBED OUT.
 	BR	READL
 
 RDRUB4:	TYPEST	^"\) "
@@ -670,44 +1076,48 @@ REREAD:	MOV	THSCHR,NXTCHR	;REREAD LAST CHAR.
 RDNUMB:	TRAP	.ERROR
 	2			;BAD CHAR IN NUMBER.
 
-RATOM:	TRAP	.RDCHR
-	CMP	R4,#'/		;"/" ==> USE NEXT CHAR INVARIABLY.
-	BNE	10$
-	JMP	RDCHR
-10$:	JSR	PC,TN1		;IS THE CHAR AN ATOM TERMINATOR?
-	BNE	12$		;NO, RETURN IT.
-	CMP	R4,#177		;WELL DO OWN RUBOUT PROC
-	BEQ	12$
-	TRAP	.REREA		;YES, DON'T READ IT, RETURN 0.
-	CLR	R4
-12$:	RTS	PC
+RATOM:	TRAP .RDCHR
+	CMP R4,#'/		;"/" ==> USE NEXT CHAR INVARIABLY.
+	IF EQ,<
+	  JMP RDCHR
+	  >
+	JSR PC,TN1		;IS THE CHAR AN ATOM TERMINATOR?
+	BNE 1$			;NO, RETURN IT.
+	CMP R4,#177		;WELL DO OWN RUBOUT PROC
+	IF NE,<
+	  TRAP .REREA 		;YES, DON'T READ IT, RETURN 0.
+	  CLR R4
+	  >
+1$:	RTS PC
 ;READ IN A PNAME ATOM.
 RDATOM:	TRAP	.REREA		;CHAR JUST READ IS 1ST IN ATOM.
 	MOV	#RDATBF,R1	;PTR TO PNAME BUFFER.
 RDAT0:	JSR	PC,RATOM
 RDAT1:	CMP	R4,#177		;RUBOUT?
-	BNE	14$
+	BNE	3$
 	CMP	R1,#RDATBF	;AT BEGIN OF BUFF?
-	BNE	12$
+	BNE	2$
 	TRAP	.REREA		;REREAD THE RUBOUT
 	CLR	R4
-	BR	14$
-12$:	MOVB	-(R1),R4	;GET CHAR
-.IF Z TS
-	CMP	TXS,#SXS	;SB?
-	BNE	10$
-	TYPEST	^" "		;BS,SP,BS
-	BR	RDAT0
-10$:
+	BR	3$
+2$:	MOVB	-(R1),R4	;GET CHAR
+.IF EQ  TS
+	CMP TXS,#SXS		;SB?
+	IF EQ,<
+	  TYPEST ^" "	;BS,SP,BS
+	  BR RDAT0
+	  >
 .ENDC
 	JSR	PC,TYPEC	;RETYPE IT
 	BR	RDAT0
-14$:	MOVB	R4,(R1)+	;STORE NEXT CHAR.
+3$:	MOVB	R4,(R1)+	;STORE NEXT CHAR.
 	BNE	RDAT0		;KEEP GOING TILL END OF ATOM.
 	BIT	#3,R1		;FILL WITH 0S TO DBLWD BNDRY.
 	BNE	RDAT1
-EXPLO2:	CLR	(R1)
-	MOV	R1,RDATL	;REMEMBER 1ST UNUSED LOC.
+EXPLO2:	MOV R1,RDATL		;REMEMBER 1ST UNUSED LOC.
+	CLR	(R1)+
+	CLR	(R1)+
+	CLR	(R1)+
 	MOV	R2,-(SP)
 	MOV	R3,-(SP)
 	TST	INTTYP		;IF NO INTERNING, GO CONS ATOM.
@@ -728,6 +1138,9 @@ RDAT3:	MOV	(R1)+,R3
 	TST	(R4)		;END OF PNAME - OF BUFFER, TOO?
 	BNE	RDAT4		;NO, MISMATCH.
 	MOV	-(R2),R1	;FOUND, GET PTR TO ATOM.
+	CMP R1,#NIL		;IS IT NIL?
+	BNE RDATX
+	CLR R1			;IF SO, MAKE IT ZERO
 RDATX:	MOV	(SP)+,R3
 	MOV	(SP)+,R2
 	JMP	READX
@@ -790,8 +1203,9 @@ RATOM8:	MOV	-(R3),R1	;GET VALUE OUT OF OBLIST.
 	TST	(SP)+
 	BR	RDATX
 
-	.SBTTL	EVALUATION
+.SBTTL	EVALUATION
 
+.if eq  asmfun
 EVALA:	MOV	R2,-(SP)
 	MOV	ALIST,R2
 	BR	EV
@@ -805,9 +1219,10 @@ EV:	JSR	PC,INRAN1	;IF NOT IN FS,
 	CMP	(R1),#-1
 	BNE	EVLIS		;IF LIST.
 	JSR	PC,ASSQA	;PNAME ATOM-- SEARCH ALIST.
-	BNE	10$		;TLB NOW CDDR OF ATOM.
-	MOV	2(R1),R1
-10$:	MOV	2(R1),R1	;TAKE CDR OF ALIST ENTRY, OR CDR OF ATOM.
+	IF EQ,<
+	  MOV	2(R1),R1
+	  >
+	MOV	2(R1),R1	;TAKE CDR OF ALIST ENTRY, OR CDR OF ATOM.
 	CMP	R1,#-1		;SEE IF UNDEFINED
 	BEQ	UNDEF		;YES, ERROR
 	BR	EVRET
@@ -899,9 +1314,10 @@ APPLM1:	TST	(SP)+
 APPLMF:	MOV	(SP),R1		;REST OF ARGLIST.
 	MOV	R3,(SP)		;FORMAL NAME.
 	TST	4(SP)		;IF WAS LAMBDA, EVAL ARGS.
-	BNE	1$
-	JSR	PC,LIST
-1$:	MOV	(SP),R2
+	IF EQ,<
+	  JSR PC,LIST
+	  >
+	MOV	(SP),R2
 	CLR	(SP)		;NO MORE ARGS.
 	CLR	R3
 	BR	APPLM2		;GO MAKE BINDING.
@@ -950,6 +1366,276 @@ APPLM3:	MOV	(SP)+,R4	;ADDR. OF FN.
 	MOV	(SP)+,R3
 	MOV	(SP)+,R2
 	RTS	PC
+.endc
+
+.SBTTL	EVALUATION
+
+.if ne  asmfun
+EVALA:	MOV	R2,-(SP)
+	MOV	ALIST,R2
+	BR	EV
+
+;SUBR -- EVAL ARG1 WITH ALIST ARG2.
+EVAL:	MOV	R2,-(SP)
+	BNE	EV
+	MOV	ALIST,R2
+EV:	JSR	PC,INRAN1	;IF NOT IN FS,
+	BLO	EVRET		;RETURN AS IS.
+	CMP	(R1),#-1
+	BNE	EVLIS		;IF LIST.
+	JSR	PC,ASSQA	;PNAME ATOM-- SEARCH ALIST.
+	IF EQ,<
+	  MOV	2(R1),R1
+	  >
+	MOV	2(R1),R1	;TAKE CDR OF ALIST ENTRY, OR CDR OF ATOM.
+	CMP	R1,#-1		;SEE IF UNDEFINED
+	BEQ	UNDEF		;YES, ERROR
+EVRET:	MOV (SP)+,R2
+	RTS PC
+
+EVLIS:	MOV	R3,-(SP)
+	MOV	R2,R3		;ALIST ARG TO APPLY.
+	MOV	2(R1),R2	;ARGLIST ARG TO APPLY.
+	MOV (R1),R1		;FUNCTION ARG TO APPLY.
+	CLR	APPLYF		;FLAG SO LAMBDA-FUNCTIONS WILL EVAL ARGS.
+	BR APPLY0
+
+;COME HERE FOR  (CONS 'FUNARG (CONS ALIST FUNC))
+APPFNG:	MOV 2(R1),R1
+	MOV	(R1)+,(SP)	;1ST ELT IS NEW ALIST.
+	MOV	(R1),R1		;CDR IS FUNCTION TO APPLY.
+	BR	APPLY1
+
+APPER1:	TRAP	.ERROR
+	6			;TOO FEW ARGS.
+APPER2:	TRAP	.ERROR
+	10			;TOO MANY ARGS.
+UNDEF:	TRAP	.ERROR
+	14			;UNDEFINED VARIABLE
+FUNERR:	TRAP .ERROR
+	6
+;SUBR - CALLS ARG1 WITH ARGS FROM ARG2, ALIST FROM ARG3.
+;CLOBBERS R1-R3, R5.  RETURNS VALUE RETURNED BY ARG1.
+APPLY:	MOV R2,-(SP)
+	MOV R3,-(SP)
+	IF EQ,<
+	  MOV ALIST,R3		;IF 3RD ARG IS NIL, USE CURRENT ALIST
+	  >
+	MOV #1,APPLYF		;NEVER EVAL ARGS IN ARGLLIST.
+APPLY0:	MOV ALIST,-(SP)
+	MOV R3,-(SP)
+APPLY1:	JSR PC,INRAN1		;FUNCTION IN FREE STORAGE?
+	BLO FUNERR		;NO, THEN IT CAN'T BE A FUNCTION
+	CMP (R1),#-1		;ATOM?
+	BNE APPEXP
+	MOV R1,-(SP)		;SAVE ATOM
+	JSR PC,PLIST		;GET ATOM'S PLIST IN R1
+	BEQ APPLY3		;IF ANY
+3$:	CLR R5
+1$:	CMP (R1),FPROPS(R5)	;IS NEXT PLIST PROPERTY A FUNCTION PROPERTY? (FEXPR,ETC)
+	BNE 2$
+	MOV @2(R1),R1		;IF SO, PUT THE FUNCTION-OBJECT IN R1
+	TST (SP)+		;FLUSH THE ATOM ITSELF
+	JMP @FAPPLY(R5)		;AND DISPATCH TO APPROPRIATE FUNCTION APPLICATION RTN
+2$:	TST (R5)+		;TRY ANOTHER KIND OF FUNCTION
+	TST FPROPS(R5)
+	BNE 1$			;IF ANY
+	MOV 2(R1),R1		;IF THAT PROPERTY WASN'T FUNCTIONAL, CDR DOWN THE PLIST
+	MOV 2(R1),R1		;AND TRY AGAIN WITH THE NEXT
+	BNE 3$
+APPLY3:	MOV (SP)+,R1		;NO FUNCTION PROPERTY FOUND, RESTORE THE ATOM
+
+	JSR PC,EVALA		;EVALUATE IT
+	BR APPLY1		;AND TRY AGAIN
+
+;WE COME HERE WITH TOP OF STACK ==> SUPPLIED ALIST
+;				    CURRENT ALIST
+;				    R3
+;				    R2
+;R1 HAS FUNCTION EXPRESSION, R2 HAS ARGLIST,  R3 HAS SUPPLIED ALIST
+
+APPFEX:	BIS #2,APPLYF		;SIGNAL A FEXPR
+APPEXP:	CMP (R1),#FUNARG	;IS (CAR FUNCTION-EXPRESSION) FUNARG?
+	BEQ APPFNG
+	CMP (R1),#LAMBDA	;HOW ABOUT LAMBDA?
+	BEQ APPEX1
+	MOV R2,-(SP)		;IF NOT, IT AIN'T A FUNCTION
+	MOV APPLYF,-(SP)
+	MOV 6(SP),R2		;PUT ALIST-PTR IN R2
+	JSR PC,EVAL		;EVAL THE FORM IN R1
+	MOV (SP)+,APPLYF
+	MOV (SP)+,R2
+	BR APPLY1		;AND TRY AGAIN	
+APPEX1:	MOV 2(R1),R1		;TAKE CDR OF FUNCTION, FLUSHING THE "LAMBDA"
+	MOV (R1)+,R3		;GET PARAM. LIST.
+	MOV (R1),-(SP)		;SAVE VALUE FORMS.
+	TST R3
+	IF NE,<
+	  CMP (R3),#-1		;NON-NULL ATOMIC VARLIST?
+	  BEQ APPLEX		;THEN WE'VE GOT A LEXPR
+	  >
+	BIT #2,APPLYF		;FEXPR?
+	BEQ APPEX2
+	MOV R2,R1		;ARGLIST
+	MOV (R3)+,R2		;GETS BOUND TO (CAR VARLIST)
+	JSR PC,XCONS
+	MOV 2(SP),R2
+	JSR PC,CONS
+	MOV R1,2(SP)
+	MOV (R3),R3		;2ND VARIABLE
+	IF NE,<
+	  MOV 4(SP),R1		;CALLED ALIST
+	  MOV (R3),R2		;GETS BOUND TO 2ND VAR
+	  JSR PC,XCONS
+	  MOV 2(SP),R2
+	  JSR PC,CONS
+	  MOV R1,2(SP)
+	  >
+	MOV (SP)+,R2		;RESTORE VALUE FORMS
+	BR APPLM3
+	
+APPEX2:	MOV	R2,-(SP)	;SAVE ARGLIST.
+	TST R3			;IF NO PARAMS, WE'RE FINISHED BINDING!
+	BEQ APPLM1
+
+APPLM0:	MOV	(SP),R2		;REST OF ARGLIST
+	BEQ	APPER1		;ERROR IF NO MORE ARGS.
+	MOV	(R2)+,R1
+	MOV	(R2),(SP)	;DETACH NEXT ARG FROM LIST.
+	BIT #1,APPLYF		;IS THIS A CALLED APPLY?
+	BNE	.+6		;IF SO, DON'T EVAL ARGS!!!
+	JSR	PC,EVALA
+	MOV	(R3)+,R2
+APPLM2:	JSR	PC,XCONS	;BIND THE ARG.
+	MOV	4(SP),R2	;ADD BINDING TO FRONT OF NEW ALIST.
+	JSR	PC,CONS
+	MOV	R1,4(SP)
+	MOV	(R3),R3
+	BNE	APPLM0		;HANDLE REMAINING PARAM'S.
+
+APPLM1:	TST (SP)+		;FLUSH REMAINDER OF ARGLIST, HOPEFULLY NIL
+	IF NE,<
+	  JMP APPER2
+	  >
+	MOV (SP)+,R2		;VALUE FORMS.
+	BR APPLM3
+
+;WE COME HERE WITH TOP OF STACK ==> VALUE FORMS
+;				    SUPPLIED ALIST
+;				    CURRENT ALIST
+;				    R3
+;				    R2
+;ARGLIST IN R2, ATOMIC VARLIST IN R3
+
+APPLEX:	MOV R3,-(SP)		;SAVE ATOM
+	BIT #3,APPLYF		;EVALUATE THE ARGUMENTS?
+	BEQ APPLX1
+	MOV R2,R3		;NO, SAVE THE ARGLIST
+	MOV R2,R1
+	JSR PC,LENGTH		;GET ITS LENGTH IN R1
+	MOV (SP)+,R2		;RESTORE SAVED ATOM
+	JSR PC,XCONS		;AND BIND IT TO THE ARGNUM ON THE SUPPLIED ALIST
+	MOV 2(SP),R2
+	JSR PC,CONS
+	MOV R1,2(SP)
+	MOV R3,R1		;ARGLIST
+	BR APPRT1	
+
+APPLX1:	MOV R2,R1		;ARGLIST
+	MOV #APPRET,-(SP)	;RETURN ADDRESS
+	TRAP .LSUBR		;EVAL & STACK ARGS, LEAVING # OF ARGS IN R3
+	MOV R3,R1
+	CLR R2
+	JSR PC,MAKNU1		;RETURN LISP # IN R1
+	MOV R3,-(SP)
+	ASL R3
+	ADD SP,R3
+	MOV 4(R3),R2		;RESTORE ATOM
+	JSR PC,XCONS		;AND BIND IT TO THE # OF ARGS
+	MOV 8.(R3),R2
+	JSR PC,CONS
+	MOV R1,8.(R3)
+	MOV (SP)+,R3
+	CLR R1
+	CLR R2
+	JMP LIST		;THIS IS REALLY A JSR, LEAVE LIST OF EVAL'ED ARGS IN R1
+APPRET:	TST (SP)+		;FLUSH SAVED ATOM
+APPRT1:	MOV #ARGS,R2		;SPECIAL ATOM FOR LSUBR ARGS
+	JSR PC,XCONS		;BIND SPECIAL ATOM TO LIST
+	MOV 2(SP),R2		;ON SUPPLIED ALIST AT 2(SP)
+	JSR PC,CONS
+	MOV R1,2(SP)
+	MOV (SP)+,R2		;VALUE FORMS LIST
+APPLM3:	MOV (SP)+,ALIST
+	JSR PC,IMPRO1		;EVAL THE FORMS IN R2
+	MOV (SP)+,ALIST		;RESTORE OLD ALIST
+	MOV (SP)+,R3
+	MOV (SP)+,R2
+	RTS PC
+
+;DISPATCHED @FAPPLY FROM APPLY1
+;CALLED WITH STACK, REGS SAME AS FOR APPEXP
+
+APPSUB:	MOV R1,-(SP)		;SAVE SUBR ADDR
+	MOV #3,R3		;ARG COUNTER
+	TST R2			;ANY ARGS?
+	BEQ APPSU1
+APPSU2:	MOV (R2)+,R1		;GET NEXT ARG
+	BIT #1,APPLYF		;EVALUATE?
+	BNE .+6
+	JSR PC,EVALA		;EVALUATE IT
+	MOV R1,-(SP)		;SAVE IT
+	DEC R3			;COUNT IT
+	MOV (R2),R2		;AND GET THE NEXT ONE
+	BNE APPSU2		;IF ANY
+
+APPSU1:	MOV R3,R5
+	IF LT,<
+	  TRAP .ERROR
+	  10
+	  >
+	CLR R1			;UNSUPPLIED ARGS WANT TO BE NIL
+	CLR R2
+	CLR R3
+	ASL R5
+	ADD R5,PC		;DISPATCH ON # OF ARGS
+	MOV (SP)+,R3		;THESE POPS MUST, OF COURSE, BE IN ORDER, IMMEDIATELY
+	MOV (SP)+,R2		;FOLLOWING THE DISPATCH.
+	MOV (SP)+,R1
+
+	MOV (SP)+,R4		;SUBR ADDR
+APPSU4:	MOV (SP)+,ALIST		;SUPPLIED ALIST
+	JSR PC,(R4)		;DO THE SUBR
+APPSU3:	MOV (SP)+,ALIST		;RESTORE OLD ALIST
+	MOV (SP)+,R3
+	MOV (SP)+,R2
+	RTS PC
+	
+
+;SEE COMMENT FOR ABOVE ROUTINE
+
+APPFSU:	MOV R1,R4		;SUBR ADDR
+	MOV R2,R1		;ARGLIST IS 1ST ARGUMENT TO FSUBR
+	MOV ALIST,R2		;CURRENT ALIST IS 2ND ARG
+	BR APPSU4
+
+
+;SEE COMMENT FOR ABOVE ROUTINE, SQUARED
+
+APPLSU:	MOV R1,-(SP)		;SUBR ADDR
+	MOV #APPLS1,-(SP)	;SAVE RETURN ADDR FOR FORTHCOMING LSUBR CALL
+	MOV R2,R1		;ARGLIST
+	TRAP .LSUBR		;EVALUATE & STACK ARGS, LEAVING # OF ARGS IN R3
+	MOV R3,R4
+	ASL R4
+	ADD SP,R4
+	MOV 4(R4),ALIST		;USE SUPPLIED ALIST
+	CLR R1
+	CLR R2
+	JMP @2(R4)		;THIS IS REALLY A JSR
+APPLS1:	CMP (SP)+,(SP)+		;FLUSH SUPPLIED ALIST AND SUBR ADDR
+	BR APPSU3
+.endc
 
 	.SBTTL	LISP PROGRAM FCNS
 
@@ -963,9 +1649,10 @@ PROG:	MOV	PROGPC,-(SP)
 	MOV	R4,-(SP)
 ;BIND EACH LABEL TO THE FOLLOWING PART OF THE PROGRAM.
 PROGA:	CMP	#-1,@0(R2)	;IF NEXT ELT IS ATOM,
-	BNE	10$
-	TRAP	.XCONS
-10$:	MOV	2(R2),R2	;CHECK EACH ITEM.
+	IF EQ,<
+	  TRAP .XCONS
+	  >
+	MOV	2(R2),R2	;CHECK EACH ITEM.
 	BNE	PROGA
 	MOV	(SP)+,R3	;LIST OF PROG VARIABLES.
 	BEQ	PROG7
@@ -995,6 +1682,7 @@ RETURN:	MOV	R2,PROGPC
 
 	.SBTTL	BINDING FCNS
 
+.if eq  asmfun
 ;FSUBR DEFUN DEFINES A FCN
 DEFUN:	MOV	(R1)+,-(SP)
 	MOV	(R1),R1
@@ -1010,6 +1698,29 @@ DEFUN:	MOV	(R1)+,-(SP)
 	MOV	(SP)+,R1
 	BR	SET
 
+.iff
+DEFUN:	MOV #EXPR,R3
+	CMP (R1),#FEXPR		;FEXPR DECLARATION?
+	BNE DEFUN1
+	MOV #FEXPR,R3
+	MOV 2(R1),R1		;FLUSH THE FEXPR DECLARATION
+	MOV (R1)+,-(SP)		;SAVE FNAME
+	MOV (R1),R1
+	BR DEFUN2
+DEFUN1:	MOV	(R1)+,-(SP)	;SAVE FNAME
+	MOV	(R1),R1
+	CMP (R1),#FEXPR		;FEXPR DECLARATION HERE?
+	BNE DEFUN2
+	MOV #FEXPR,R3
+	MOV 2(R1),R1		;FLUSH THE DECLARATION
+DEFUN2:	MOV	#LAMBDA,R2
+	TRAP	.XCONS
+	MOV	R1,R2
+	MOV	(SP),R1	;RESTORE FNAME
+	JSR PC,PUTPROP
+	MOV (SP)+,R1		;RETURN THE FNAME
+	RTS PC
+.endc
 
 ;FSUBR - SETS ARG1 TO VALUE OF ARG2.
 SETQ:	MOV	(R1)+,-(SP)
@@ -1022,9 +1733,10 @@ SETQ:	MOV	(R1)+,-(SP)
 SET:	MOV	R2,-(SP)
 	MOV	ALIST,R2	;FIRST LOOK FOR BINDING.
 	TRAP	.ASSOC
-	BNE	10$
-	MOV	2(R1),R1	;TLB IS CDDR OF ATOM, NOT CDR.
-10$:	MOV	(SP)+,R2	;GET NEW VALUE.
+	IF EQ,<
+	  MOV 2(R1),R1		;TLB IS CDDR OF ATOM, NOT CDR.
+	  >
+	MOV	(SP)+,R2	;GET NEW VALUE.
 	MOV	R2,2(R1)	;PUT IN EITHER BINDING OR ATOM.
 
 ;SUBR - RETURNS ARG2.
@@ -1033,60 +1745,72 @@ PROG2:	MOV	R2,R1
 
 ;SUBR - SEARCH FOR ELT. IN ARG2 WHOSE CAR IS ARG1.
 ;RETURN THE ELT IN ARG2, OR ().
-ASSQ:	JSR	PC,ASSQA	;SEARCH, PUT ELT IN R1 IF FOUND.
-	BNE	10$		;IN WHICH CASE, RETURN.
-	CLR	R1		;IF NOT FOUND, RETURN ().
-10$:	RTS	PC
+ASSQ:	JSR PC,ASSQA		;SEARCH, PUT ELT IN R1 IF FOUND.
+	IF EQ,<
+	  CLR R1 		;IF NOT FOUND, RETURN ().
+	  >
+	RTS PC
 
 ;TRAP .ASSOC COMES HERE.
 ;SETS Z BIT IF NO BINDING FOUND.
-ASSQA:	TST	R2		;SEE IF NULL ALIST
-	BEQ	12$
-	CMP	R1,@(R2)+	;NEXT ELT'S CAR.
-	BEQ	10$
-	MOV	(R2),R2
-	BNE	ASSQA		;KEEP LOOKING.
-12$:	RTS	PC		;NOT FOUND (NOTE Z BIT SET).
-
-10$:	MOV	-(R2),R1	;RETURN THE BINDING.
-	RTS	PC		;(Z BIT OFF).
+ASSQA:	TST R2			;SEE IF NULL ALIST
+	IF NE,<
+	  CMP R1,@(R2)+		;NEXT ELT'S CAR.
+	  IF EQ,<
+	    MOV -(R2),R1 	;RETURN THE BINDING.
+	    RTS PC 		;(Z BIT OFF).
+	    >
+	  MOV (R2),R2
+	  BNE ASSQA		;KEEP LOOKING.
+	  >
+	RTS PC			;NOT FOUND (NOTE Z BIT SET).
 
 	.SBTTL	PREDICATES
 
 ;LSUBR - T IFF ARGS IN STRICTLY ASCENDING ORDER
+.if eq  asmfun
 LESSP:	TRAP	.LSUBR		;PUT ARGS ON STACK
 	MOV	#2,CMPT		;LESS THAN COMPARISON
+.iff
+LESSP:	MOV	#2,CMPT		;LESS THAN COMPARISON
+.endc
 	BR	CMPC
 
 ;LSUBR - T IFF ARGS IN STRICTLY DECREASING ORDER
+.if eq  asmfun
 GREATERP:
 	TRAP	.LSUBR		;PUT ARGS ON STACK
+.iff
+;CLOBBERS R2, R3, R5
+GREATERP:
+.endc
 	CLR	CMPT		;GREATER THAN COMPARISON
 CMPC:	CMP	R3,#2		;ERROR IF LESS THAN 2 ARGS
 	BLO	WNA
 	MOV	(SP)+,R1	;GET LAST ARG
 	TRAP	.GTNUM
 	DEC	R3
-10$:	MOV	R1,R2
-	MOV	(SP)+,R1
-	TRAP	.GTNUM
-	ADD	CMPT,PC		;DETERMINE WHICH COMPARE
-	BR	11$
-	CMP	R1,R2		;COMPARE
-	BGE	12$
-	SOB	R3,10$		;DO FOR ALL ARGS ON STACK
-	BR	ATRUE		;RAN OUT OF ARGS, THUS TRUE
-11$:	CMP	R1,R2
-	BLE	12$
-	SOB	R3,10$
-	BR	ATRUE
-12$:	DEC	R3		;GET NO. OF ARGS LEFT OF STACK
-	ASL	R3		;AND POP THEM OFF
-	ADD	R3,SP		;...
-	BR	AFALSE
+LOOP <	  MOV R1,R5
+	  MOV (SP)+,R1
+	  TRAP .GTNUM
+	  ADD CMPT,PC		;DETERMINE WHICH COMPARE
+	  BR 1$
+	  CMP R1,R5		;COMPARE
+	  EXITL GE
+	  SORL R3		;DO FOR ALL ARGS ON STACK
+	  BR ATRUE 		;RAN OUT OF ARGS, THUS TRUE
+1$:	  CMP R1,R5
+	  EXITL LE
+	  SORL R3
+	  BR ATRUE
+	  >
+	DEC R3			;GET NO. OF ARGS LEFT OF STACK
+	ASL R3			;AND POP THEM OFF
+	ADD R3,SP		;...
+	BR AFALSE
 CMPT:	0
 
-WNA:	TRAP	.ERROR		;WRONG NO. OF ARGUMENTS
+WNA:	TRAP .ERROR		;WRONG NO. OF ARGUMENTS
 	6
 
 
@@ -1175,6 +1899,10 @@ EQUALN:	MOV	R5,SP		;ONE INEQUAL. DOOMS ALL.
 	BR	AFALSE
 EQUALP:	BIT	R4,R2		;R1 NOT NUM., R2?
 	BNE	EQUALN
+	CMP (R1),#-1		;IS R1 AN ATOM?
+	BEQ EQUALN		;ATOMS ARE EQUAL IFF EQ, SO THIS ONE LOSES
+	CMP (R2),#-1		;SAME FOR R2
+	BEQ EQUALN
 	MOV	(R1)+,-(SP)	;BOTH NOT NUMS, SAVE CARS.
 	MOV	(R2)+,-(SP)
 	MOV	(R1),R1
@@ -1206,13 +1934,23 @@ XCONS:	JSR	PC,ALLOC	;GET NEW PAIR.
 	RTS	PC
 
 ;LSUBR EVALUATES ITS ARGS, RETURNS LIST OF THEM.
-LIST:	TRAP	.LSUBR		;EVAL, STACK ARGS.
-1$:	DEC	R3		;NUM. ARGS LEFT.
+.if eq  asmfun
+list:	trap .lsubr		;eval, stack args.
+loop <	  dec r3		;num. args left.
+	  exitl mi
+	  mov (sp)+,r2		;cons args onto front of list.
+	  trap .xcons		;args accessed in reverse order.
+	  rptl
+	  >
+	rts pc
+.iff
+LIST:	DEC	R3		;NUM. ARGS LEFT.
 	BMI	2$
 	MOV	(SP)+,R2	;CONS ARGS ONTO FRONT OF LIST.
 	TRAP	.XCONS		;ARGS ACCESSED IN REVERSE ORDER.
-	BR	1$
+	BR	LIST
 2$:	RTS	PC
+.endc
 
 ;SUBR - REPLACE CAR
 RPLACA:	MOV	R2,(R1)
@@ -1223,24 +1961,33 @@ RPLACD:	MOV	R2,2(R1)
 	RTS	PC
 
 ;SUBR -- RETURNS NUM. ELTS IN ITS ARG.
-LENGTH:	MOV	R1,R4
-	BEQ	12$		;IF NONE.
-	CLR	R1		;COUNTER.
-10$:	INC	R1
-	MOV	2(R4),R4
-	BNE	10$
-12$:	JMP	MAKNUM
+LENGTH:	JSR PC,LENGT1
+	MOV R2,-(SP)
+	JSR PC,MAKNU1
+	MOV (SP)+,R2
+	RTS PC
+
+LENGT1:	MOV R1,R4
+	IF NE,<
+	  CLR R1		;COUNTER.
+loop <	    INC R1
+	    MOV 2(R4),R4
+	    rptl ne
+	    >
+	  >
+	RTS PC
 
 
 ;SUBR -- CONCATENATES 2 LISTS WITHOUT COPYING.
-NCONC:	MOV	R1,R4		;SAVE ARG TO RETURN IT.
-	BEQ	1$		;IF 1ST ARG (), RETURN 2ND.
-	JSR	PC,LAST		;GET TO END OF 1ST.
-	MOV	R2,2(R1)	;STICK 2ND IN.
-	MOV	R4,R1
-	RTS	PC
-1$:	MOV	R2,R1
-	RTS	PC
+NCONC:	MOV R1,R4		;SAVE ARG TO RETURN IT.
+	IF NE,<
+	  MOV R2,R1		;IF 1ST ARG (), RETURN 2ND.
+	  RTS PC
+	  >
+	JSR PC,LAST		;GET TO END OF 1ST.
+	MOV R2,2(R1)		;STICK 2ND IN.
+	MOV R4,R1
+	RTS PC
 
 ;SUBR -- RETURNS LAST LINK IN ARG, A LIST.
 LAST:	TST	2(R1)
@@ -1261,26 +2008,29 @@ CAAR:	MOV	@(R1)+,R1
 
 ;SUBR - REVERSE THE ELEMENTS OF A LIST
 REVERSE:
-	MOV	R1,R3
-	BEQ	2$		; (REVERSE NIL) => NIL
-	CLR	R2
-1$:	MOV	(R3)+,R1	; TAKE NEXT ELT OF LIST
-	TRAP	.CONS		; AND TACK ONTO FRONT OF NEW LIST
-	MOV	R1,R2
-	MOV	(R3),R3		; MOVE TO NEXT ELT
-	BNE	1$
-2$:	RTS	PC
+	MOV R1,R3
+	IF NE,<			; (REVERSE NIL) = NIL
+	  CLR R2
+  loop <    MOV (R3)+,R1	; TAKE NEXT ELT OF LIST
+	    TRAP .CONS		; AND TACK ONTO FRONT OF NEW LIST
+	    MOV R1,R2
+	    MOV (R3),R3		; MOVE TO NEXT ELT
+	    rptl ne
+	    >
+	  >
+	RTS PC
 
 ;SUBR - REVERSE A LIST BY CHANGING IT
 NREVERSE:
-	CLR	R3		; PTR TO LAST ELT PROCESSED
-1$:	MOV	2(R1),R2	; GET LINK TO NEXT CONS
-	MOV	R3,2(R1)	; REPLACE WITH LINK TO LAST CONS
-	MOV	R1,R3		; PTR TO THIS CONS TO R3
-	MOV	R2,R3		; MOVE TO NEXT ELT
-	BNE	1$
-	MOV	R3,R1		; RETURN THE MODIFIED LIST
-	RTS	PC
+	CLR R3			; PTR TO LAST ELT PROCESSED
+LOOP <	  MOV 2(R1),R2		; GET LINK TO NEXT CONS
+	  MOV R3,2(R1)		; REPLACE WITH LINK TO LAST CONS
+	  MOV R1,R3		; PTR TO THIS CONS TO R3
+	  MOV R2,R1		; MOVE TO NEXT ELT
+	  RPTL NE
+	  >
+	MOV R3,R1		; RETURN THE MODIFIED LIST
+	RTS PC
 
 
 COND1:	MOV	(R2),R1		;SEQUENCE TO NEXT "COND-PAIR".
@@ -1301,7 +2051,14 @@ IMPRO1:	MOV	(R2),R1		;EVAL THE NEXT.
 CONDR:	RTS	PC
 
 ;SUBR -- EXIT LISP
-QUIT:	JMP	@#137730	;EXIT TO DSKLOD
+QUIT:
+.IF EQ  TS
+	JMP	@#137730	;EXIT TO DSKLOD
+.ENDC
+.IF EQ  TS-SITS
+	BPT
+	RTS PC
+.ENDC
 
 ;SUBR - LEAVE ARGUMENT VALUELESS
 MAKUNBOUND:
@@ -1338,37 +2095,55 @@ NATOME:	TRAP	.ERROR
 	16
 
 ;SUBR - FIND VALUE ON PROPERTY LIST
-GET:	JSR	PC,PLIST	; GET PLIST FOR ATOM
-1$:	CMP	(R1)+,R2	; THIS THE REQUESTED PROPERTY
-	BEQ	2$		; YES, RETURN CADR
-	MOV	(R1),R1		; NO, SKIP VALUE
-	MOV	2(R1),R1	; PTR TO NEXT PROPERTY NAME
-	BNE	1$		; KEEP ON LOOKING
-	RTS	PC
-2$:	MOV	@(R1)+,R1	; VALUE OF PROPERTY IS CADR
-	RTS	PC
+GET:	JSR PC,PLIST		; GET PLIST FOR ATOM
+loop <	  CMP (R1)+,R2		; THIS THE REQUESTED PROPERTY
+	  EXITL EQ 		; YES, RETURN CADR
+	  MOV (R1),R1		; NO, SKIP VALUE
+	  MOV 2(R1),R1		; PTR TO NEXT PROPERTY NAME
+	  RPTL NE 		; KEEP ON LOOKING
+	  RTS PC
+	  >
+	MOV @(R1)+,R1		; VALUE OF PROPERTY IS CADR
+	RTS PC
 	
 ;SUBR - SET A PROPERTY ON A PROPERTY LIST
 PUTPROP:
-	JSR	PC,.A		; GET PTR TO PLIST CELL OF ATOM
-1$:	MOV	2(R4),R1	; MOVE TO NEXT PROP NAME
-	BEQ	3$
-	CMP	(R1)+,R3	; IS THIS THE PROPERTY?
-	BEQ	2$		; YES, REPLACE VALUE
-	MOV	(R1),R4		
-	BR	1$
-2$:	MOV	R2,@(R1)+	; OVERWRITE CADR WITH NEW VALUE
-	MOV	R2,R1		; RETURN VALUE PUTPROP'D
-	RTS	PC
-3$:	PUSH	R2,R4		; SAVE R4
-	MOV	R2,R1		; CONS UP (PROP VALUE)
-	TRAP	.NCONS
-	MOV	R3,R2
-	TRAP	.XCONS
-	POP	R4
-	MOV	R1,2(R4)	; TACK ON PROPERTY TO LIST
-	POP	R1		; RETURN VALUE PUTPROP'D
-	RTS	PC
+	JSR PC,.A		; PUT PTR TO PLIST CELL OF ATOM INTO R4
+	MOV R2,-(SP) 		;SAVE VALUE
+	MOV R4,-(SP) 		;SAVE PTR TO PLIST CELL
+1$:	MOV 2(R4),R1		; MOVE TO NEXT PROP NAME
+	BEQ 3$
+	CMP (R1)+,R3		; IS THIS THE PROPERTY?
+	BEQ 2$			; YES, REPLACE VALUE
+	MOV (R1),R4		
+	BR 1$
+2$:	MOV R2,@(R1)+		; OVERWRITE CADR WITH NEW VALUE
+	MOV R2,R1		; RETURN VALUE PUTPROP'D
+	CMP (SP)+,(SP)+ 	;FLUSH SAVED PLIST PTR & VALUE
+	RTS PC
+3$:	MOV R2,R1		; CONS UP (PROP VALUE <REST OF PLIST>)
+	MOV (SP)+,R2
+	MOV R2,R5
+	MOV 2(R2),R2
+	JSR PC,CONS
+	MOV R3,R2
+	JSR PC,XCONS
+	MOV R1,2(R5)
+	POP R1			; RETURN VALUE PUTPROP'D
+	RTS PC
+
+;SUBR - 2 ARGS. REMOVES THE <ARG2> PROPERTY FROM THE PLIST OF <ARG1>
+REMPROP:
+	JSR PC,.A		;PUT PTR TO PLIST CELL OF ATOM INTO R4
+1$:	MOV 2(R4),R1		;NEXT PROPERTY NAME,
+	BEQ 3$			; IF ANY
+	CMP (R1)+,R2		;RIGHT PROPERTY?
+	BEQ 2$			;IF SO, REMOVE IT
+	MOV (R1),R4		;IF NOT,
+	BR 1$			; TRY AGAIN
+2$:	MOV (R1),R1		;SPLICE OUT THE PROPERTY
+	MOV 2(R1),2(R4)
+3$:	RTS PC
 
 ;SUBR - ASSIGNS VALUE ARG3 TO OBJECT ARG1, IN ALIST ARG2.
 ;IF ARG1 NOT BOUND IN ARG2, MAKES BINDING AT FRONT.
@@ -1389,8 +2164,12 @@ SETA1:	MOV	R3,2(R1)	;CHANGE VALUE IN OLD BINDING.
 	.SBTTL	ARITHMETIC
 
 ;LSUBR - SUMS ARGS
+.if eq  asmfun
 PLUS:	TRAP	.LSUBR
 	JSR	R0,ARITH
+.iff
+PLUS:	JSR	R0,ARITH
+.endc
 	ADD	R1,AC		;ADDITION RTN.
 	ADC	AC+2
 	ADD	R2,AC+2
@@ -1398,7 +2177,9 @@ PLUS:	TRAP	.LSUBR
 
 ;LSUBR - RETURNS FIRST ARG MINUS THE REST.
 DIFFERENCE:
+.if eq  asmfun
 	TRAP	.LSUBR
+.endc
 	JSR	R0,ARITH
 	SUB	R1,AC		;ARITH CALL BACK HERE.
 	SBC	AC+2
@@ -1406,26 +2187,30 @@ DIFFERENCE:
 	RTS	PC
 
 ;LSUBR MULTIPLIES ARGS
+.if eq  asmfun
 TIMES:	TRAP	.LSUBR
 	INC	R1		;IDENTITY ELT.
+.iff
+TIMES:	INC	R1		;IDENTITY ELT.
+.endc
 	JSR	R0,ARITH
 	MOV	AC,R4
 	MOV	AC+2,R5
 	CLR	AC
 	CLR	AC+2
-	BR	12$
-10$:	ASL	R4
+	BR	2$
+1$:	ASL	R4
 	ROL	R5
 	CLC
-12$:	ROR	R2
+2$:	ROR	R2
 	ROR	R1
-	BCS	14$
-	BNE	10$
+	BCS	3$
+	BNE	1$
 	RTS	PC
-14$:	ADD	R4,AC
+3$:	ADD	R4,AC
 	ADC	AC+2
 	ADD	R5,AC+2
-	BR	10$
+	BR	1$
 
 ;SUBR -- REMAINDER OF A/B
 REMAINDER:
@@ -1437,13 +2222,15 @@ REMAINDER:
 	TRAP	.GTNUM
 	JSR	PC,IDIV		; DO THE DIVISION
 	MOV	R4,R1		; COPY REMAINDER INTO R1,R2
-	MOV	R5,R2		; FOR MAKNUM
+	MOV	R5,R2		; FOR MAKNU1
 	POP	R0
-	BR	MAKNUM		; MAKE REMAINDER INTO # AND RETURN
+	BR	MAKNU1		; MAKE REMAINDER INTO # AND RETURN
 
 ;LSUBR -- DIVISION ROUTINE
 QUOTIENT:
+.if eq  asmfun
 	TRAP	.LSUBR		;EVALUATE AND STACK OUR ARGS
+.endc
 	INC	R1		;IDENTITY ELEMENT = 1.
 	JSR	R0,ARITH	;SETUP ARITHMETIC, DIVISOR IN R1
 	PUSH	R0,R3		; SAVE R0
@@ -1504,24 +2291,25 @@ IDIV:	CLR R4			; REMAINDER REG (R).
 
 ;ARITHMETIC SETUP ROUTINE
 ARITH:	ASL	R3		;DOUBLE NUM. ARGS.
-	BEQ	MAKNUM		;IF NONE, RET. DEFAULT.
+	BEQ	MAKNU1		;IF NONE, RET. DEFAULT.
 	MOV	R3,ARITHN
 	ADD	SP,R3		;ADDR. OF 1ST ARG ON STACK.
 	MOV	(R3),R1		;GET 1ST ARG.
 	TRAP	.GTNUM
 	MOV	R1,AC		;INTO ACCUM.
 	MOV	R2,AC+2
-1$:	MOV	-(R3),R1	;PROCESS NEXT ARG
-	CMP	R3,SP		;IF ALL ARGS HANDLED,
-	BEQ	2$
-	TRAP	.GTNUM
-	JSR	PC,(R0)		;PERFORM PARTICULAR OP.
-	BR	1$		;(RESULT IN RMQ) HANDLE REST OF ARGS.
-2$:	MOV	AC,R1		;RET. RESULT IN ACCUM.
+loop <	  MOV -(R3),R1		;PROCESS NEXT ARG
+	  CMP R3,SP		;IF ALL ARGS HANDLED,
+	  EXITL EQ
+	  TRAP .GTNUM
+	  JSR PC,(R0)		;PERFORM PARTICULAR OP.
+	  RPTL 			;(RESULT IN RMQ) HANDLE REST OF ARGS.
+	  >
+	MOV	AC,R1		;RET. RESULT IN ACCUM.
 	MOV	AC+2,R2
 	MOV	(SP)+,R0	;RESTORE R0
 	ADD	ARITHN,SP	;FLUSH ARGS FROM STACK.
-	BR	MAKNUM
+	BR	MAKNU1
 
 
 AC:	0	; ARITHMETIC ACCUMULATOR
@@ -1534,15 +2322,15 @@ NEGSW:	0	; USED BY IDIV TO INDICATE MUST NEGATE QUOTIENT
 ADD1:	TRAP	.GTNUM
 	ADD	#1,R1		;INC DOESN'T SET CARRY
 	ADC	R2
-	BR	MAKNUM
+	BR	MAKNU1
 
 ;SUBR - RETURNS ARG1-1
 SUB1:	TRAP	.GTNUM
 	SUB	#1,R1		;DEC DOESN'T SET CARRY
 	SBC	R2		;DOUBLE WORD SUBTRACT
-	BR	MAKNUM
+	BR	MAKNU1
 ;STORE CONTENTS OF R1 AS NUMBER, PUT NUMBER IN R1.
-MAKNUM:	TST	R2		;HI ORDER ZERO?
+MAKNU1:	TST	R2		;HI ORDER ZERO?
 	BNE	1$		;NO, CAN'T BE INUM
 	CMP	#TOPSTK,R1	;SMALL ENUF FOR INUM?
 	BHI	2$		;YES, JUST INCREM.
@@ -1590,11 +2378,11 @@ DELQ:	CMP	R1,(R2)+
 DEL2:	MOV	(R2),R4		;FOLLOWING LINK.
 	BEQ	MEMBX		;IF NO MORE LINKS.
 	CMP	R1,(R4)+	;IF THAT LINK ->ARG1,
-	BNE	10$
-	MOV	(R4),(R2)	;RPLACD IT OUT,
-	BR	DEL2		;AND LOOK AT LINK AFTER IT.
-
-10$:	MOV	R4,R2		;ELSE, PASS IT BY.
+	IF EQ,<
+	  MOV (R4),(R2)		;RPLACD IT OUT,
+	  BR DEL2		;AND LOOK AT LINK AFTER IT.
+	  >
+	MOV	R4,R2		;ELSE, PASS IT BY.
 	BR	DEL2
 
 ;FSUBR - EVAL ALL ARGS UNTIL ONE RETURNS ().
@@ -1604,7 +2392,6 @@ AND:	DEC	R3		;NOW HAS -1
 OR:	MOV	R1,R2		;FOR OR, R3 HAS ().
 	BEQ	ANDXIT		;IF NO MORE, RETURN VALUE OF LAST ARG.
 	MOV	(R2)+,R4
-	BMI	ANDXIT		;NOT AN ARG - IT'S CAR OF ATOM.
 	MOV	R4,R1		;IT'S AN ARG, SO EVAL IT.
 	TRAP	.EVAL
 	BIT	R1,R3		;IF DOING AND, & VALUE NON(),
@@ -1615,21 +2402,71 @@ ORNEXT:	MOV	(R2),R2		;HANDLE NEXT ARG.
 ORTEST:	CMP	R1,R3		;IF DOING OR & VALUE (), HANDLE NEXT.
 	BEQ	ORNEXT
 ANDXIT:	RTS	PC
+
+.SBTTL LSUBR HACKERY
 
 ;EVALS AND STACKS ARGS IN ORDER.
 ;PUTS NUM. OF ARGS IN R3, () IN R1,R2.
 ;TRAP .LSUBR COMES HERE.
-LSUBRA:	CLR	R3		;ARG. COUNTER.
-10$:	MOV	R1,R2		;LIST OF REMAINING ARGS.
-	BEQ	12$
-	MOV	(R2)+,R1	;EVAL AND STACK NEXT ARG.
-	TRAP	.EVAL
-	MOV	(SP),-(SP)	;SLIP ARG UNDER RETURN ADDR.
-	MOV	R1,2(SP)
-	INC	R3
-	MOV	(R2),R1
-	BR	10$
-12$:	RTS	PC
+.if eq  asmfun
+LSUBRA:	CLR R3			;ARG. COUNTER.
+loop <	  MOV R1,R2		;LIST OF REMAINING ARGS.
+	  EXITL EQ
+	  MOV (R2)+,R1		;EVAL AND STACK NEXT ARG.
+	  TRAP .EVAL
+	  MOV (SP),-(SP)	;SLIP ARG UNDER RETURN ADDR.
+	  MOV R1,2(SP)
+	  INC R3
+	  MOV (R2),R1
+	  RPTL
+	  >
+	RTS PC
+.iff
+LSUBRA:	CLR R3			;ARG. COUNTER.
+loop <	  MOV R1,R2		;LIST OF REMAINING ARGS.
+	  EXITL EQ
+	  MOV (R2)+,R1		;EVAL NEXT ARG
+	  BIT #1,APPLYF		;IF THIS ISN'T A CALLED APPLY
+	  IF EQ,<
+	    TRAP .EVAL
+	    >
+	  MOV (SP),-(SP)	;SLIP ARG UNDER RETURN ADDR.
+	  MOV R1,2(SP)
+	  INC R3
+	  MOV (R2),R1
+	  RPTL
+	  >
+	RTS PC
+.endc
+
+
+;SUBR -- RETURNS NTH ELEMENT OF ARGS LIST, WHERE N IS ARG'S ARGUMENT
+;IF (ARG NIL) WAS CALLED, (LENGTH ARGS) IS RETURNED
+ARG:	MOV R1,R2		;ARG # OR ()
+	MOV #ARGS,R1
+	JSR PC,EVALA		;GET LSUBR-ARGS LIST IN R1
+	MOV R1,R3
+	JSR PC,LENGT1		;GET (LENGTH ARGS) IN R1
+	TST R2
+	BNE ARG1
+	RTS PC
+ARG1:	MOV R1,-(SP)		;SAVE LENGTH
+	MOV R2,R1		;ARG #
+	TRAP .GTNM1		;GET REAL NUMBER IN R1,R2
+	MOV (SP)+,R2		;RESTORE LENGTH
+	CMP R1,R2
+	BLE ARG2
+ARG3:	TRAP .ERROR
+	6
+ARG2:	MOV R1,R2		;ARG #
+	MOV R3,R1		;ARGLIST
+	DEC R2
+	BLT ARG3
+	BEQ ARGDON
+ARGL:	MOV 2(R1),R1		;SETQ R1 (CDR R1)
+	SOB R2,ARGL		;N TIMES
+ARGDON:	MOV (R1),R1		;RETURN NTH ELEMENT
+	RTS PC
 
 .SBTTL	PNAME HACKERY
 
@@ -1646,9 +2483,10 @@ PNPUT:	MOV	R2,-(SP)	; SAVE INTERN FLAG
 	MOV	#-1,R2		; -1 TO INDICATE SYMBOLIC ATOM
 	JSR	PC,XCONS
 	TST	(SP)+		; INTERN THIS ATOM?
-	BEQ	1$		; NO, JUST RETURN
-	JSR	PC,INTERN
-1$:	RTS	PC
+	IF NE,<
+	  JSR	PC,INTERN
+	  >
+	RTS	PC
 
 ;SUBR - RETURN T IFF TWO ARGS HAVE SAME PNAME
 SAMENAMEP:
@@ -1727,6 +2565,29 @@ MAKNA3:	DEC	R4
 	RTS	PC
 
 
+;SUBR - 0 ARGS.
+GENSYM:	MOV GENAME,R1		;LAST GENSYM NAME, LIST OF ASCII #S
+	MOV #4,R5		;DIGIT COUNTER
+loop <	  INC (R1)		;INC DIGIT
+	  CMP (R1),#'9+1
+	  EXITL LO
+	  MOV #'0+1,(R1)	;IF SO, WRAP TO SNUM FOR ASCII "0"
+	  MOV 2(R1),R1		;TAKE CDR OF GENSYM NAME LIST
+	  SORL R5		;AND INC NEXT DIGIT, IF ANY
+	  BPT			;JUST OUT OF CURIOSITY (CAN ALT-P FROM HERE)
+	  >
+	MOV GENAME,R1
+	JSR PC,REVERSE		;REVERSE THE NEW GENSYM NAME-LIST
+	JMP MAKNAM		;AND MAKE AN ATOM OUT OF IT
+
+;SUBR - 0 ARGS.			RESET GENSYM NAME TO G0000
+GENSET:	MOV GENAME,R1		;EXPLODED GENSYM NAME LIST
+	MOV #4,R5		;DIGIT COUNTER
+loop <	  MOV #'0+1,(R1)	;LISP # FOR ASCII 0
+	  SORL R5
+	  >
+	RTS PC
+
 ;SUBR - REMOVE AN ATOM FROM THE OBLIST
 REMOB:	MOV	OBLIST,R2	; GET OBLIST PTR
 	JSR	PC,DELQ		; REMOVE
@@ -1771,11 +2632,12 @@ OUTCN:	INC	OUTPOS		;ORDINARY CHAR ==>1 SPACE REQUIRED.
 OUTCR:	MOV	LINEL,CHRCT	;NUM. CHARSS. ALLOWED IN LINE.
 	CLR	OUTPOS		;CR ==> AT START OF LINE.
 OUTC:
-.IF Z TS
+.IF EQ TS
 	TSTB	@TXS		;WAIT TILL PRINTER READY.
 	BPL	OUTC
 	MOVB	R4,@TXB		;PRINT THE CHAR.
-.IFF
+.ENDC
+.IF EQ TS-SITS
 	MOV 	R4,-(SP)
 	MOV	#OUTCAP,-(SP)
 	$BYTO
@@ -1783,11 +2645,11 @@ OUTC:
 OUTCX:	RTS	PC
 
 OUTTAB:	TST	CHRCT
-	BNE	10$
+	BNE	1$
 	JSR	PC,TERPRI	;IF NO ROOM, PRINT CRLF.
-10$:	TYPEST	^" "		;PRINT AT LEAST 1 SPACE,
+1$:	TYPEST	^" "		;PRINT AT LEAST 1 SPACE,
 	BIT	#7,OUTPOS	;KEEP GOING TO TAB STOP.
-	BNE	10$
+	BNE	1$
 	RTS	PC
 
 ;SUBR -- TAKE ASCII CODE AS ARG AND TYPE CHAR
@@ -1812,17 +2674,18 @@ RDCHR:	MOV	NXTCHR,R4	;IF CHAR TO RE-READ,
 	BR	RDRTN
 
 1$:
-	.IF NE  TS
-	  MOV CRLINK,-(SP)
-	  $BYTI
-	  MOV (SP)+,R4
-	.IFF
-	  MOV	TTYCHR,R4
-	  BNE	2$
-	  WAIT
-	  BR	1$
-  2$:	  CLR	TTYCHR
-	.ENDC
+.IF EQ  TS
+	MOV	TTYCHR,R4
+	BNE	2$
+	WAIT
+	BR	1$
+2$:	CLR	TTYCHR
+.ENDC
+.IF EQ  TS-SITS
+	MOV CRLINK,-(SP)
+	$BYTI
+	MOV (SP)+,R4
+.ENDC
 	CMP	R4,#177
 	BEQ	RDRTN		;DON'T ECHO RUBOUT.
 	CLR	SILENT		;TURN ON OUTPUT.
@@ -1840,9 +2703,54 @@ RDRTN:	MOV	R4,THSCHR	; SET CURRENT CHAR
 TILNK==1
 TOLNK==1
 
-.IF EQ  TS
+.SBTTL FILE I/O
+
+.IF EQ  TS-SITS
+;SUBR - 1 ARG, ATOM WHOSE PNAME IS FILE TO MUTATE TO & READ FROM
+UREAD:	JSR PC,RDFNAM		;READ FILENAME INTO FILBUF
+	INVOK #DKDCAP,#.CPYCP,,#-1	;COPY DEFAULT FILE CAPABILITY
+	MOV (SP)+,INFILE
+	INVOK. INFILE,#.FAMU,#FILBUF,#0	;MUTATE TO FILE
+	BEQ UREADX
+	RTS PC
+
+UREADX:	TRAP .ERROR
+	22
+
+;SUBR - 1 ARG, ATOM WHOSE PAME IS FILE TO ADD & WRITE INTO
+UWRITE:	JSR PC,RDFNAME		;READ FILENAME INTO FILBUF
+	INVOK #DKDCAP,#.CPYCP,,#-1
+	MOV (SP)+,OUTFIL
+	INVOK. OUTFIL,#.FAAD,#FILBUF
+	BEQ UREADX		;IF EVERYTHING'S OK,
+
+
+RDFNAM:	MOV #FILBUF,R5
+	MOV R5,FBPTR		;INIT FILBUF PTR
+	MOV PCHAR,-(SP)
+	MOV #FILER,PCHAR	;"PRINT" INTO FILBUF VIA FILER RTN
+	MOV #40,R4
+1$:	CLR (R5)+		;CLEAR FILBUF
+	SOB R4,1$
+	JSR PC,PRINC		;NOW, PRINT ATOM NAME INTO FILBUF
+	MOV (SP)+,PCHAR
+	RTS PC
+
+
+;GETS CALLED BY JSR PC,@PCHAR WITH #FILER IN PCHAR
+;CHAR TO OUTPUT IS IN R4
+FILER:	MOVB R4,@FBPTR
+	INC FBPTR
+	RTS PC
+
+FBPTR:	FILBUF
+FILBUF:	.BLKW 40
+
+.ENDC	; EQ TS-SITS
+
 	.SBTTL	INTERRUPT HANDLERS
 
+.IF EQ  TS
 SXINT:	MOV	R1,-(SP)
 	MOV	@#SRB,R1
 	MOV	#SXS,TXS
@@ -1863,16 +2771,16 @@ TKIN1:	INC	TKINTO
 	BEQ	TKINTX		;IF PRECEDING CHAR WAS "/".
 	CMP	R1,#7		;^G?
 	BNE	1$
-	CLR	@#PS		;RESTORE LOW PRIORITY
+	SPL	0		;RESTORE LOW PRIORITY
 	TRAP	.ERROR		;GIVE ERROR TO STOP WHATS DOING
 	20
 1$:	CMP	R1,#'/
 	BNE	TKINTS
 	MOV	#-1,TKINTQ	;SLASHIFY NEXT CHAR.
 TKINTS:	CMP	R1,#3
-	BNE	10$
+	BNE	1$
 	JMP	BEG		;^C ==> RESTART.
-10$:	CMP	R1,#'O-100
+1$:	CMP	R1,#'O-100
 	BEQ	TKINTO
 TKINTX:	TST	TTYCHR		;IF READ IS WAITING FOR CHAR,
 	BNE	TKINTG
@@ -1889,8 +2797,14 @@ TXB:	SXB	;OUTPUT BUFFER REG
 
 .SBTTL	SITS SETUP STUFF
 
-OUTCAP==3
-INCAP==2
+OUTCAP:	TTYCAP		;OUTPUT CAPABILITY, INITIALLY TTY
+INCAP:	TTYCAP		;INPUT       "    ,     "      "
+
+OUTFIL:	0		;FILE I/O CAPABILITIES
+INFILE:	0
+
+OUTFLG:	0		;FLAGS SAYING TO USE IN/OUTFILE CAPS FOR I/O
+INFLAG:	0
 
 TSINIT:	TST CRLINK	;CORE LINK EXIST?
 	BNE TSINI1	;YUP
@@ -1935,12 +2849,88 @@ TSINI2:	TST -(SP)
 	MOV PRCAP,-(SP)
 	BIS #<.PRWRT!.PRSTOP>*400,(SP)
 	$INVOK
-	MOV #TTYPDL,SP	
-TYILOP:	MOV #INCAP,-(SP)
-	$BYTI
+	MOV #TTYPDL,SP			;FALL THRU TO TYI LOOP
+
+				;FALLS IN FROM ABOVE
+	INVOK #TTYCAP,#<.TTMOV*400>,#.TICTM	;SET TTY MODE
+
+TYILOP:	JSR PC,@GCHAR
+	ASL R5
+	BIT #300,R5		;CTRL CHAR?
+	BEQ 1$			;IF SO,DISPATCH
+	JSR PC,TYINO		;ELSE, NORMAL TYI
+	BR TYILOP
+1$:	JSR PC,@TYITAB(R5)
+	BR TYILOP
+
+TYINO:	ASR R5
+	MOV R5,-(SP)
 	MOV CRLINK,-(SP)
 	$BYTO
-	BR TYILOP
+	RTS PC
+
+
+TYI.Q:	TST INFILE		;IF INFILE IS NONZERO, MAKE IT THE DEFAULT INPUT SRC
+	BEQ 1$
+	MOV INFILE,INCAP
+1$:	RTS PC
+
+TYI.R:	MOV PC,OUTFLG		;ENABLE OUTPUT TO FILE DESTINATION
+	RTS PC
+
+TYI.S:	MOV #TTYCAP,INCAP	;RESTORE TTY INPUT
+	CLR SILEN1
+	RTS PC
+
+TYI.T:	CLR OUTFLG		;DISABLE OUTPUT TO FILE DESTINATION
+	RTS PC
+
+TYI.V:	CLR SILEN1		;RESTORE TTY ECHOING
+	RTS PC
+
+TYI.W:	MOV PC,SILEN1		;FLUSH TTY ECHOING DURING FILE READS
+	RTS PC
+
+TYITAB:	TYINO,TYINO,TYINO,TYINO,TYINO,TYINO,TYINO,TYINO	;0-7
+	TYINO,TYINO,TYINO,TYINO,TYINO,TYINO,TYINO,TYINO	;10-17
+	TYINO,TYI.Q,TYI.R,TYI.S,TYI.T,TYINO,TYINO,TYINO	;20-27
+	TYINO,TYINO,TYINO,TYINO,TYINO,TYINO,TYINO,TYINO	;30-37
+
+PCHAR:	BYTO..			;ADDR OF ROUTINE TO OUTPUT A CHAR WITH
+GCHAR:	BYTI..			;ADDR OF ROUTINE TO INUPT A CHAR WITH
+READF:	0
+SILEN1:	0
+
+;CHAR TO OUTPUT IS IN R4
+BYTO..:	TST SILEN1		;THIS FLAG SEZ
+	BEQ 2$
+	TST OUTFLG		; THAT IF OUTPUT IS GOING TO A FILE
+	BEQ 2$
+	TST OUTFIL		; & THERE IS REALLY, A FILE TO GO TO,
+	BNE 3$			; DON'T OUTPUT TO TTY
+2$:	MOV R4,-(SP)
+	MOV OUTCAP,-(SP)
+	$BYTO			;OUTPUT CHAR TO NORMAL OUTPUT DESTINATION
+3$:	TST OUTFLG		;FLAG SET FOR FILE OUTPUT?
+	BEQ 1$
+	TST OUTFIL		;IS THERE A FILE TO OUTPUT TO?
+	BEQ 1$
+	TST READF		;DON'T WANT TO ECHO INTO OUTPUT FILE
+	BEQ 1$
+	MOV R4,-(SP)
+	MOV OUTFIL,-(SP)
+	$BYTO
+1$:	RTS PC
+
+BYTI..:	MOV INCAP,-(SP)
+	.BYTI			;READ CHAR FROM CURRENT INPUT SOURCE
+	BEQ 1$			;IF ANYTHING WENT WRONG, WE'LL ASSUME IT WAS AN EOF
+	MOV (SP)+,R5
+	RTS PC
+1$:	TST (SP)+		; SO FLUSH BYTI ARG
+	MOV #TTYCAP,INCAP	; AND REINIT INPUT CAPS
+	CLR INFILE
+	RTS PC
 
 PRCAP:	0
 CRLINK:	0
@@ -1949,9 +2939,140 @@ TTYPDL::
 TSINI3:	RTS PC
 .ENDC
 
+.SBTTL LAP SUBRS
+
+;SUBR - RETURN CONTENTS OF LOCATION DESIGNATED BY ARG IN R1
+EXAMINE:
+	JSR PC,LAPTST
+	MOV (R1),R1
+	TRAP .MKNUM		;MAKE CONTENTS A LISP #
+	RTS PC
+
+;SUBR - 2 ARGS - MOVE # IN R2 TO LOCATION DESIGNATED BY R1
+DEPOSIT:
+	MOV R2,-(SP)
+	JSR PC,LAPTST
+	MOV R1,R3
+	MOV (SP),R1
+	TRAP .GTNUM		;MAKE REAL NUMBER TO DEPOSIT
+	MOV R1,(R3)
+	MOV (SP)+,R1
+	RTS PC
+
+LAPTST:	TRAP .GTNUM		;MAKE (R1) A REAL NUMBER
+	CMP R1,#TOP
+	BHI LAPERR
+	BIT #1,R1		;MUST BE EVEN
+	BNE LAPERR
+	RTS PC
+LAPERR:	TRAP .ERROR
+	2
+
+
+;SUBR - 1 ARG. CONVERTS LISP OBJECT IN R1 INTO A LISP NUMBER
+MAKNUM:	CLR R2
+	JMP MAKNU1
+
+;SUBR - 1 ARG. CONVERTS LISP # IN R1 INTO A REAL # IN R1 (,R2)
+MUNKAM:	TRAP .GTNUM
+	RTS PC
+
+.SBTTL LCOMPL UTILITY ROUTINES
+;TRAP TO HERE WITH R5 HOLDING THE OBJECT DESIGNATING THE FUNCTION TO BE CALLED,
+;R4 HOLDS TRAP INSTR
+;CLOBBERS R4,R5, PLUS WHATEVER GETS CLOBBERED BY THE CALLED ROUTINE
+
+CALL:	MOV R1,-(SP)
+	MOV R2,-(SP)
+	MOV R5,R1
+	JSR PC,INRAN1		;FUNCTION IN NODESPACE?
+	BLO CALERR		;IF NOT, IT AIN'T A FUNCTION
+	CMP (R1),#-1		;ATOM?
+	BNE CALINT		;IF NOT, CALL THE INTERPRETER
+	MOV R4,-(SP)
+	JSR PC,PLIST		;YES, GET PLIST
+	BEQ CALIN1		;IF ANY
+CALL0:	CMP (R1),#SUBR		;(F/L/)SUBR PROPERTY?
+	BEQ CALL2
+	CMP (R1),#FSUBR
+	BEQ CALL2
+	CMP (R1),#LSUBR
+	BEQ CALL2
+	MOV 2(R1),R1		;IF NOT, TRY NEXT PROP ON PLIST
+	MOV 2(R1),R1
+	BNE CALL0			;OH WELL, INTERPRET...
+	BR CALIN1
+CALL2:	MOV (SP)+,R4
+	MOV @2(R1),R5		;FOUND A (F/L/)SUBR PROP, PUT ADDR IN R5
+	MOV 4(SP),R2		;PTR TO RETURN ADDR FOR THIS CALL
+	BIT #100,R4		;CLOBBERABLE CALL?
+	BNE CALNOC
+	BIT #10,R4		;WAS PRECEEDING MOV ***,R5 2 WDS LONG, OR JUST 1?
+	BEQ CALL1
+	SUB #6,R2		;2 WDS, GO BACK PAST THE CALL, TO THE MOV
+	MOV #NOOP,4(R2)		;AND NOOP OUT THE CALL
+	BR CALL5
+CALL1:	SUB #4,R2		;1 WD, DITTO
+CALL5:	BIT #40,R4		;JMP OR JSR?
+	BNE CALL3		;CLOBBER THE MOV/CALL WITH ONE OR THE OTHER
+	MOV #JSRPC,(R2)
+	BR CALL4
+CALL3:	MOV #JMPTO,(R2)
+CALL4:	MOV R5,2(R2)		;ADDR OF SUBR, 2ND WORD OF THE JMP/JSR INSTRUCTION
+CALNOC:	MOV (SP)+,R2
+	MOV (SP)+,R1
+	BIT #40,R4		;JMP OR JSR TO SUBR?
+	BEQ 1$
+	TST (SP)+		;IF THE SUBR IS "JMP'ED" TO,RETRN ADDR SHOULD BE FLUSHED
+1$:	JMP (R5)
+	
+CALIN1:
+CALINT:				;THIS INTERFACE ISN'T IMPLEMENTED YET
+CALERR:	TRAP .ERROR
+	4
+
+NOOP==	BR			;BR .+2
+JMPTO==	JMP+37			;JMP @#...
+JSRPC==	JSR+737			;JSR PC,@#...
+
+;CALLED BY JSR R5, WITH ATOM TO BE BOUND AT WORD FOLLOWING THE JSR (IE @ R5),
+;BINDING VALUE AT 2(SP)
+;BINDS THE ATOM TO THE VALUE
+
+BIND:	MOV R1,-(SP)
+	MOV R2,-(SP)
+	MOV 6(SP),R1
+	MOV (R5)+,R2
+	JSR PC,XCONS
+	MOV ALIST,R2
+	JSR PC,CONS
+	MOV R1,ALIST
+	MOV (SP)+,R2
+	MOV (SP)+,R1
+	RTS R5
+
+
+;CALLED WITH ATOM IN R1
+;RETURN ATOM'S VALUE IN R1
+EVATOM:	MOV R2,-(SP)
+	MOV ALIST,R2
+	JSR PC,ASSQA		;SEARCH ALIST
+	BNE 1$			;IF BINDING CELL IS FOUND, RETURN ITS CDR
+	MOV 2(R1),R1		;IF NOT FOUND THERE, GET ATOM'S VALUE CELL
+1$:	MOV 2(R1),R1
+	MOV (SP)+,R2
+	RTS PC	
+
+.SBTTL USER SUBR SPACE
+
+%BPORG:	0
+
+	.=.+35000		;SUBR SPACE
+
 .SBTTL	SEVERAL VARIABLES
 
 FREEL:	0	;PTR TO FREE LIST
+FREEN:	0	;NUMBER OF FREE CELLS AFTER GC
 LOCELL:	LSTSP	;BOTTOM OF FREE STORAGE.
 HICELL:	TOP-2	;TOP OF FREE STORAGE
 PROGPC:	0	;PTR TO NEXT FORM TO EVAL
@@ -1980,10 +3101,22 @@ THSCHR:	0	;SAVE THIS CHAR IN CASE OF REREAD.
 TKINTQ:	0
 
 
-
+.if ne  asmfun
+FPROPS:	EXPR	;TABLE OF FUNCTION PROPERTIES, USED BY APPLY
+	FEXPR
+	SUBR
+	FSUBR
+	LSUBR
+	0
+FAPPLY:	APPEXP	;DISPATCH TABLE CORRESPONDING TO FPROPS TYPES
+	APPFEX
+	APPSUB
+	APPFSU
+	APPLSU
+.endc
 	.SBTTL	INITIAL LIST STRUCTURE
 
-GCTLEN==<TOP-.+37>/40		; LENGTH OF GC TABLE
+GCTLEN==<<TOP-.+37>_-5>&3777	; LENGTH OF GC TABLE
 GCTLEN==<GCTLEN+1>/2*2		; MAKE EVEN
 
 GCBTAB:	.BLKB	GCTLEN		; TABLE OF MARK BITS FOR GC
@@ -1993,11 +3126,12 @@ LSTSP==.			; PTR TO START OF FREE STORAGE
 				; PURE LIST STRUCTURE STORED HERE
 
 
-
 ;MACRO TO CREATE ATOM: A-NAME, B-VALUE, C-LABEL ON HEADER.
 .MACRO	.ATM PNAME,VALUE,H,PROPL
 PNMPTR==.
 	.ASCII ÐNAMEŠ	.=<.+3>/4*4
+.LIF EQ  <.-PNMPTR>
+	0,0
 .REPT	<.-PNMPTR>/4-1
 	PNMPTR+1,.+2
 	PNMPTR==PNMPTR+4
@@ -2019,6 +3153,7 @@ VALUE			; VALUE CELL HERE.
 .LIST
 .ENDM .ATM
 
+.if eq  asmfun
 .MACRO	.SUBR A
 .NLIST
 .ATOM	A,A
@@ -2030,17 +3165,29 @@ VALUE			; VALUE CELL HERE.
 .ATOM	A,A+1
 .LIST
 .ENDM .FSUBR
+
+.iff
+
+.IRP FUNTYP,<SUBR,FSUBR,LSUBR>
+.MACRO .'FUNTYP A
+PLPTR==.
+	FUNTYP		;PLIST WITH SUBR PROPERTY
+	.+2
+	A
+	0
+.ATOM A,-1,,PLPTR
+.ENDM
+.ENDM
+.endc
 
+OBLSPT==0			;PTR TO OBLIST-SO-FAR, INITIALLY NIL
 
-	OBLSPT==0		; FOR CREATING OBLIST
-
-%NIL:	.WORD .+4,0		; NIL'S VALUE CELL
-	.WORD .+4,0		; NIL'S PROP LIST
-	.WORD .+4+1,0		; PNAME
-	.ASCIZ "nil"		; ...
-	.WORD 0,OBLSPT		; OBLIST ENTRY FOR NIL
-OBLSPT=.-4
-
+.if ne  asmfun
+QUOTEP:	FSUBR			;PROPERTY-LIST FOR QUOTE
+	.+2
+	CAR			;QUOTE IS JUST CAR CALLED AS AN FSUBR
+	0
+.endc
 
 ERRM:	.WORD .+4,0
 	.WORD QUOTE,.+2
@@ -2075,6 +3222,13 @@ ERRT:	.WORD	1$
 
 	.SBTTL	INITIAL OBLIST
 
+	.atom	,-1,args:
+	.atom	,gename: 2$
+2$:	'0+1, .+2
+	'0+1, .+2
+	'0+1, .+2
+	'0+1, .+2
+	'G+1,0
 	.atom	-,$minus:0
 	.atom	+,$plus:0,.p:
 	.atom	*,$star:0,star:
@@ -2082,9 +3236,14 @@ ERRT:	.WORD	1$
 	.fsubr	and
 	.atom	alist,alist:0
 	.subr	apply
+	.subr	arg
 	.subr	assq
 	.subr	atom
 	.subr	boundp
+.if ne  asmfun
+	.atom	bporg,<1$+1>
+1$:	.word   0,%bporg
+.endc
 	.subr	caar
 	.subr	cadr
 	.subr	car
@@ -2095,13 +3254,23 @@ ERRT:	.WORD	1$
 	.subr	cons
 	.fsubr	defun
 	.subr	delq
+	.subr	deposit
+.if eq  asmfun
 	.fsubr	difference
+.iff
+	.lsubr	difference
+.endc
 	.subr	eq
 	.subr	equal
 	.subr	err
+.if eq  asmfun
 	.subr	error
+.iff
+	.lsubr	error
+.endc
 	.subr	errset
 	.subr	eval
+	.subr	examine
 	.subr	explode
 	.atom	expr,-1,expr:
 	.atom	fexpr,-1,fexpr:
@@ -2109,22 +3278,52 @@ ERRT:	.WORD	1$
 	.atom	funarg,lambda,funarg:
 	.atom	function,car+1,function:
 	.subr	gc
+	.subr	genset
+	.subr	gensym
 	.subr	get
 	.subr	go
+.if eq  asmfun
 	.fsubr	greaterp
+.iff
+	.lsubr	greaterp
+.endc
 	.subr	implode
 	.subr	intern
 	.atom	lambda,lambda,lambda:
+	.atom	lapsyms,3$
+3$:	.+5,	.+6
+	0,	ALIST
+	.+5,	.+6
+	0,	ARGS
+	.+5,	.+6
+	0,	BIND
+	.+5,	.+6
+	0,	EVATOM
+	.+5,	.+6
+	0,	MAKNUM
+	.+5,	0
+	0,	T
 	.subr	last
 	.subr	length
+.if eq  asmfun
 	.fsubr	lessp
+.iff
+	.lsubr	lessp
+.endc
 	.atom	linel,linel:79.+1
+.if eq  asmfun
 	.fsubr	list
+.iff
+	.lsubr	list
+.endc
 	.atom	lsubr,-1,lsubr:
+	.subr	maknum
 	.subr	member
 	.subr	minusp
+	.subr	munkam
 	.subr	nconc
 	.subr	ncons
+	.atom	nil,-1,nil:
 	.atom	nlambda,lambda,nlambda:
 	.subr	not
 	.subr	nreverse
@@ -2133,7 +3332,11 @@ ERRT:	.WORD	1$
 	.atom	oblist,oblist:0,obpcel:
 	.fsubr	or
 	.subr	plist
+.if eq  asmfun
 	.fsubr	plus
+.iff
+	.lsubr	plus
+.endc
 	.subr	plusp
 	.subr	pnget
 	.subr	pnput
@@ -2144,11 +3347,17 @@ ERRT:	.WORD	1$
 	.subr	prog2
 	.subr	putprop
 	.subr	quit
+.if eq  asmfun
 	.atom	quote,car+1,quote:
 	.fsubr	quotient
+.iff
+	.atom	quote,-1,quote:,quotep
+	.lsubr	quotient
+.endc
 	.subr	read
 	.subr	remainder
 	.subr	remob
+	.subr	remprop
 	.subr	return
 	.subr	reverse
 	.subr	rplaca
@@ -2162,9 +3371,17 @@ ERRT:	.WORD	1$
 	.atom	subr,-1,subr:
 	.atom	t,t,t:
 	.subr	terpri
+.if eq  asmfun
 	.fsubr	times
+.iff
+	.lsubr	times
+.endc
 	.subr	tyi
 	.subr	tyo
+.if ne  ts
+	.subr	uread
+	.subr	uwrite
+.endc
 	.subr	xcons
 	.subr	zerop
 
@@ -2175,6 +3392,4 @@ ERRT:	.WORD	1$
 	.WORD	-1	; SO SITS LOADER WILL ALLOCATE THIS HIGH
 
 
-%GO==BEG	;SIMULATOR START ADDRESS
-
-	.END BEG
+.END BEG
