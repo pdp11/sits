@@ -1,0 +1,614 @@
+
+   
+           Rug is a symbolic debugger which runs on the pdp11.  There are
+   three basic output modes which affect how the contents of a location get
+   printed.
+   $C causes the location contents to be printed as a number.
+   $S causes the location to be printed as a symbol.
+   $I causes the location to be printed as an instruction.
+   Also there are two minor mode changes:
+   $A inhibits the printing of symbols (like in an instruction).
+   $R reverses the action of $A.
+   
+           By typing two alt modes, the mode gets more permanently changed,
+   but can be changed back, of course by switching to a different mode.
+   
+           To open a location type / or \.  This opens it in word or byte
+   mode respectively.  However if an odd location is opened, it will be in
+   byte mode even if / was typed.
+   
+           After a location is opened, a number can be placed into it
+   numerically, symbolically, or as an instruction. For instance if FOO is
+   defined,all of the following are legal:
+   100/  53 MOV @FOO+.(%2),(%3)+
+   100/  53 FOO+352-10
+   100/  53  6
+           To open a register, type %5/ and %5 will be opened as expected
+
+                                                                      PAGE 2
+
+   (or if it is a defined symbol just type its name)
+   
+           When typing an instruction, type the operation code followed by a
+   space or tab. Extra tabs and spaces are ignored here.  Then type the next
+   field. Follow it by a comma if there is another field. Then type the
+   other field.  When inputting a symbol, the arithmetic operations are +, -
+   , *, and ! for add, subtract multiply and divide respectively.  Important
+   note: when typing in condition codes, type SE CZ, for example. in other
+   words, type SE(space) or CL(space), depending on whether you wish to
+   clear or set the flags, then follow it with all the flags you wish to
+   modify by the instruction.
+   
+           After a location is opened, carriage return will close it,
+   placing in it any value that might have been typed directly before the
+   return, unless some operations were performed, in which case it will not
+   change the contents.
+    Line feed will open the next word or byte, depending on whether the
+   previous location were opened in word or byte mode.  if the previous
+   location were opened in instruction mode, line feed will open the next
+   instruction. (it will skip over to the end of a multiple lenth
+   instruction.
+    ^ will go to either one word or one byte ahead of the opened location.
+   being in instuction mode does not change this.
+    / opens the last memory location mentioned (like JMP FOO,MOV BAR,FOO  or
+   TSTB @FOO all open FOO)
+
+                                                                      PAGE 3
+
+    _ opens second last memory location mentioned (MOV BAR,FOO opens BAR
+   with an extra slash)
+    tab (contrl i) opens the location which is the value of the number in
+   the location opened.
+   
+    < will return to the sequence interrupted by extra tabs
+   
+                                  breakpoints
+   To set a breakpoint, type FOO$B This sets a breakpoint at location FOO.
+   To delete a breakpoint, type FOO$D.  To delete all breakpoints, type $D.
+   
+           To see which locations have breakpoints in them, type .B/. This
+   will contain either a random location within rug, indicating that that
+   breakpoint is not set, or a location which would be where that breakpoint
+   is.  If line feed is typed, you can see where B1 is.  If another line
+   feed is typed, you can see where B2 is, etc.  up to B7. Or type .B+6 to
+   examine breakpoint 6.  To examine the count number of each breakpoint,
+   type .C+n/ to examine the count of breakpoint n.  (The count is how many
+   times you are to proceed through that breakpoint before stopping.)
+   
+   
+   
+                              running the program
+   FOO$G starts it at location FOO
+   $P lets it proceed from where it left off
+
+                                                                      PAGE 4
+
+   n$P causes it to stop after looping through the last breakpoint
+   n times.
+   The breakpoint repeat counts can be inpected and modified by opening .B
+   and typing 9 line feeds.  The repeat count for breakpoint 0 will then be
+   typed.  The repeat counts for breakpoints 1 through 7 follow in sequence.
+                               single step mode
+   by typing $N or ^N,  you can execute one more instruction.  Rug will type
+   SS;adr, where adr is the address of the next instruction to be executed.
+   To execute 5 instructions, type 5$N, etc.  Breakpoints are disabled in
+   single instruction mode.  By typing 400$N, it is very likely you might
+   skip a few breakpoints.
+   
+   
+    .S is a defined symbol which is the user status.
+    .P is a defined symbol which is the user priority
+   
+                               defining symbols
+   To define a symbol, type 100,FOO.  This defines FOO as location 100.  It
+   is perfectly legal to redefine symbols.  All radix 50 chars are legal in
+   a symbol.  Symbol names longer than 6 characters get automatically
+   chopped.  Also, FOO: defines FOO as . (address of the open location)
+   
+           To half kill an already defined symbol type FOO^k.  To unhalf
+   kill a symbol you accidentally half killed, just redefine it (type
+   FOO,FOO)
+
+                                                                      PAGE 5
+
+   
+           A string of numbers will be considered as octal unless there is a
+   decimal point somewhere in it or it contains an 8 or 9.
+   
+   & causes radix 50 to be input (&abc is like typing the numeric quantity
+   which is abc in radix 50 packed with a on the left) spaces are zero radix
+   50
+   
+   [ will type the two ascii bytes in the opened word
+   
+   ] performs a radix 50 mode unpack of the opened word.
+   
+   ' causes the ascii value of the next character to be input (mov ##'F,R2
+   is legal)
+   " causes the next two char.'s ascii value to be packed into a word
+   
+                                loading a file
+           To load a file from the paper tape reader, type $LP. If it is on
+   multiple tapes, the debugger halts at the end of each tape and hitting
+   "continue" causes the next tape to be read.  Use RADIA;PUNCH BIN on the
+   PDP10 to punch out a debugger-loadable tape, which is an absolute loader
+   binary of the program which gets loaded directly onto disk, followed by
+   an absolute loader tape of the symbol table which gets loaded directly
+   into core.
+   
+
+                                                                      PAGE 6
+
+           To load a file from the PDP10's disk, type $LT. The 11 will log
+   you into the 10, etc. You have to wait about 3 seconds for all that to
+   happen. Then you will get an asterisk carriage return. You are now typing
+   at the 10's LODER program. type USER;FILE BIN(cr). When it is done
+   loading you'll be back in the debugger. After loading a program you can
+   type $G and it will start at the expected place.
+           To load a program without first zeroing core, type $^L instead of
+   $L.  Symbols are always loaded with the program.
+   
+           To save the debugger on disk type $^S. To get it back type $^U.
+   There are 10 tracks for saving core images, 0-9.  0 and 1 are on the
+   fixed head disk.  2-9 are on the moving head disk.  1 is currently not
+   useable since it will be clobbered by logo.
+   
+   To dump onto track 2 type 2^D. To get it back (unsave it) type 2^U.
+                zeroing core and initializing the symbol table.
+           To zero all of core and initialize the symbol table, type $$Z. To
+   just reinitialize the symbol table, type $Z.
+                           interacting with programs
+           Programs should leave locations 2000-2300 alone.  That is the
+   resident portion of rug.  If a program is running and you wish to get to
+   the debugger, halt the program and start at location 2000.  Rug should
+   swap the program out and itself in.  Proceed is disabled when the
+   debugger is started with the switches as opposed to trapping there.  (the
+   program executes "3")
+
+                                                                      PAGE 7
+
+           Aside from the the 300 locations already mentioned, the program
+   can use all 28k of core.  However, currently only up to 157500 (the
+   absolute loader) is swapped in and out.  Maximum symbol table size is
+   about 2000 symbols (logo is well under the limit.) To find out how much
+   symbol table room is used, type "..B=" The mimumum allowed value of ..B
+   is 10000.
+
+SALV, the SITS/LOGO File System Checker
+
+Introduction
+
+	The program called SALV is a utility program for the maintence of
+disks for the SITS/LOGO systems. Its main function is to provide a consitency
+check of the directory structure on the disks, but it also includes functions
+for initializing format and file structure, and copying disks in various ways.
+The purpose of this document is to aquaint the reader with both the theory
+and the operation of SALV, and in particular give him enough information
+to enable him to deal with both day-to-day file system maintence and the
+many special problems that can arise.
+
+The SITS File System
+
+	The SITS file system provides users of the SITS system with very flexible
+ways of maintaining disk files. It makes no attempt to impose any restrictions
+on the type and format of the data stored in the files, provided that that data
+can be represented as an ordered vector of 16 bit words. It does, however,
+impose a structure of 1directories0 in which files may be kept. That structure
+is a strictly inverted tree, that is, pointers from directories must always
+point downward in the structure. Also, no directory may be pointed at by
+more or less than one other directory, except in the special case of the
+1root0 directory, which no other directory points to. Now, we shall try to
+clarify this.
+
+The Notion of Directory
+
+	In the SITS file system, a directory is a vector of files and 
+inferior directories. The inferior directories may in turn contain
+directories. Each entry in the vector has a name and a type and possibly
+a version number. The entries are kept in alphabetical order by name, and
+when names are the same, in numerical order by version number. Each entry
+also contains a block descriptor which provides the disk addresses of zero
+or more blocks that are associated with the file or directory described
+by the entry. There are also two special entries at the beggining of each
+directory which we will discuss later.
+	At the very top of the directory structure of each disk is the special
+directory called the root. The main thing that is special about
+the root directory is that its disk address is predefined.
+The first block of the root directory of each logical disk resides on block 46 of that
+disk. All other information about what is where on any given disk
+can and must be determined by reading the root directory and
+following the tree structure downwards to the file or directory of
+interest.
+
+Files
+
+	A file is a vector of 8 bit bytes stored in blocks of 1024 bytes
+on the disk. Each byte has a number assigned to it called its 1address in the
+file0. Thus, the first byte of a file is byte 0, the last byte in the
+first block of a file is byte 1023, etc. A file has a length, which is the
+byte address of the last byte of the file; this length is not restricted
+to be a multiple of 1024, nor of 2.
+Files may in theory be up to
+2**25 (about 33.5 million) bytes long, but other restrictions reduce this.
+It is possible for there to be 1holes0 in the file
+these holes must start and end on file address which are a multiple of 1024,
+that is, on block boundaries. These holes are not particularly useful
+and we will attempt to avoid any futher discussion of them.
+	The directory entry for a file contains two pieces of information
+that describe the file: the file address of the first byte which is
+1not0 in the file, and an encoded list of the disk block addresses
+where the bytes of the file reside.
+	In addition to the name and version number the file entry also
+contains the date and time that the file was created. The file
+entry also potentially contains an 1access list0 which would
+restrict access to files to specified users, but neither LOGO nor
+SITS support this feature.
+
+Operation of the SALV Program
+
+	Now that the reader (hopefully) has a general idea of what the
+file system looks like, we will switch topics drascially and discuss
+the operation of the SALV program, particularlly it's user interaction.
+	The SALV program currently can only be run standalone, that is,
+it cannot be run under the SITS timesharing system since it does
+direct hardware disk operations, and also because the operation of
+SITS could cause the file structure to become inconsistent.
+SALV can either be loaded with RUG or directly from paper tape.
+Its starting address is 1000, and it can be safely restarted at
+(almost) any time. Restarting SALV is a perfectly valid way to
+abort an operation. Generally, SALV is either waiting for command
+input from the teletype or running performing some function
+commanded from the teletype. It ignores typing while it is
+performing a function. All functions are initated with one character
+commands. Most functions also accept preceeding arguments or
+require inputs. Some of the more drastic functions require
+confirmation after they have described themselves. At
+any time SALV is waiting for an input character the character
+<control>Z may be typed which will cause SALV to execute
+a BPT instruction which should in turn cause RUG to be called,
+if SALV was loaded by RUG. If SALV is then proceeded (type <esc>P
+to RUG) you will reenter the typein wait you just left.
+SALV can also be restarted (type <esc>G to RUG) to go
+back to the beginning. The following commands take a 1 digit
+number preceeding the command as input. The number specifies
+which disk the command is to effect:
+
+	C	Check a disk. The main function of SALV.
+
+	I	Initialize a disk.
+
+	<control>F	Format a disk.
+
+The following commands take no preceeding input:
+
+	<control>U	Copy logigical disks 0 and 1 to logical disks
+			2 and 3, i.e. copy the fixed platter up to the
+			removable platter on double density drives.
+
+	<control>D	As <control>U, but copy 2 and 3 to 0 and 1, i.e.
+			copy removable down to fixed.
+
+	<control>C	Asks for two disk numbers and copies one logical
+			disk to another logical disk.
+
+(A note about the meaning of "logical disk": currently the only type
+of disk supported by LOGO/SITS/SALV/RUG is the RK11 compatible units
+made by DEC and others. The disk DEC makes has one disk per drive,
+and each disk has 203. tracks; this corresponds to the standard
+"logical disk". The drives made by Caleus and Wangco and supported by
+IMS disk controllers have 2 disks in each drive, one fixed and one
+removeable. Most of these have 203. tracks on each pyhsical disk
+and thus coorespond to 2 logical disks, but there are drives that
+have 406. tracks on each disk, and in this case, currently, each
+pyhsical disk cooresponds to 2 logical disks, and therefore there
+are 4 logical disks per drive. Clear?)
+
+
+INTRODUCTION
+
+ THE SITS DDT IS A PROGRAM USED TO DEBUG OTHER PROGRAMS.
+IT BEHAVES MUCH LIKE THE DDT ON THE ITS SYSTEM. TO USE DDT, ONE
+LOADS AN ASSEMBLY LANGUAGE PROGRAM STORED AS A FILE IN A SPECIAL
+FORMAT AS AN "INFERIOR" TO DDT.  ONLY FILES IN ONE OF THE SPECIAL
+FORMATS CAN BE LOADED; FILES IN OTHER FORMATS WILL CAUSE AN ERROR.
+ONCE LOADED, THE PROGRAM CAN BE RUN IN A CONTROLLED FASHION, STOPPED,
+AND LOCATIONS IN THE PROGRAM EXAMINED AND CHANGED.
+     COMMANDS TO DDT COME IN SEVERAL DIFFERENT VARIETIES. PERHAPS
+THE SIMPLEST ARE THE COLON COMMANDS, EXECUTED BY TYPING A COLON
+FOLLOWED BY THE NAME OF THE COMMAND AND PERHAPS SOME ARGUMENTS
+DEPENDING UPON THE COMMAND, AND TERMINATED BY A CARRIAGE RETURN.
+MANY OF THE COLON COMMANDS HAVE
+ABBREVIATED FORMS AND CAN BE EXECUTED BY SIMPLY TYPING SOME
+CONTROL CHARACTER OR AN ALTMODE (ECHOS AS $) AND ANOTHER CHAR.
+
+
+
+DDT FILE NAME CONVENTIONS
+
+ SITS DDT DIFFERS FROM ITS IN THE
+WAY FILE NAMES ARE INTERPRETED, BECAUSE SITS HAS A GENERALIZED
+TREE STRUCTURE FILE SYSTEM. AT ANY TIME, THE USER HAS A DEFAULT
+DIRECTORY WHICH CAN BE LISTED BY TYPING :LISTF. THE FILE
+NAME THE USER TYPES IS INTERPRETED AS BEING RELATIVE TO EITHER
+HIS DEFAULT DIRECTORY OR TO THE ROOT OF THE FILE SYSTEM. A
+FILE NAME CONTAINING ONE OF THE ROOTS SUCH AS 0; 1; OR 2; IS
+INTERPRETED AS BEING RELATIVE TO THAT ROOT. THE SEMICOLON IS
+THE KEY CHARACTER.  A FILE NAME WITHOUT THE SEMICOLON WILL BE
+ASSUMED TO BE RELATIVE TO THE DEFAULT DIRECTORY, THAT IS, THE
+FIRST NAME TYPED SHOULD BE A FILE OR DIRECTORY IN THE DEFAULT
+DIRECTORY, THE NEXT NAME WILL BE A FILE OR DIRECTORY IN THAT
+DIRECTORY AND SO ON UNTIL THERE ARE NO MORE NAMES IN THE FILE
+NAME STRING. EXAMPLES:
+
+:LISTF			LISTS THE USER'S DEFAULT DIRECTORY.
+:LISTF 1; USERS EPG	LIST'S EPG'S DIRECTORY IN USERS, DISK 1.
+
+:PRINT FOO		PRINTS THE FILE FOO IN THE USER'S DEFAULT DIRECTORY.
+:LOAD 0; . INQUIR	LOADS THE PROGRAM INQUIR IN THE . DIRECTORY
+			FROM DISK 0.
+
+COLON COMMANDS
+
+   THE COLON COMMANDS MAY SPECIFY A DDT COMMAND, OR IF THERE
+IS NO DDT COMMAND BY THAT NAME, DDT WILL TRY TO RUN A PROGRAM
+WITH THAT NAME LOADING FROM THE USER'S DEFAULT DIRECTORY. THE
+FILE MUST BE IN A LOADER FORMAT.  THE FILE IS LOADED WITHOUT
+THE SYMBOLS AND IS STARTED IMMEDIATELY AS IF THE USER HAD TYPED
+$G.  IF THE SYMBOLS ARE DESIRED WHEN THE PROGRAM RETURNS TO DDT,
+THEY CAN BE LOADED VIA :SYMADD.
+
+:BINLOAD  (FILE NAME) 	LOADS A FILE IN ANY FORMAT WITHOUT
+			INTERPRETING THE FORMAT INTO AN INFERIOR
+			SPHERE. THE PROGRAM CANNOT BE STARTED
+			VIA $G. USEFUL FOR SEEING EXACTLY WHAT
+			IS IN A FILE.
+
+:CAPMODE		CAUSES DDT TO OPEN THE INFERIOR SPHERE'S
+			CAPABILITIES INSTEAD OF MEMORY. THUS:
+			3/  $S   PRINTS THE TYPE OF CAPABILITY 3.
+			TO GO BACK TO LOOKING AT MEMORY, USE :ISPACE.
+
+:DELETE (FILENAME)	DELETES THAT FILE.
+
+:DSPACE			CAUSES LOCATIONS TO BE OPENED FROM MEMORY
+			IN D SPACE.
+
+:DUMP (FILENAME)	CREATES A FILE WITH THE GIVEN FILE NAME
+			AND DUMPS THE CURRENT INFERIOR SPHERE
+			IN ABSOLUTE LOADER FORMAT.
+
+:FONT (N)		CHANGES THE CURRENT FONT OF THIS TTY TO
+			FONT N. NOT ESPECIALLY USEFUL ON PRINTING
+			TERMINALS.
+
+:ISPACE			CAUSES LOCATIONS TO BE OPENED FROM MEMORY
+			IN I SPACE. (USUALLY THE SAME AS D SPACE).
+
+:LISTF (DIR NAME)	LISTS THE CONTENTS OF THE SPECIFIED DIRECTORY.
+
+:LOAD (FILENAME)	LOADS THE SPECIFIED FILE INTO AN INFERIOR
+			SPHERE. FILE MUST BE IN EITHER ABSOLUTE
+			LOADER FORMAT OR PURE LOAD FORMAT.
+
+:LOGOUT			RETURNS TO DDT'S SUPERIOR "SUCCESSFULLY".
+			IF THE SUPERIOR IS SYSSPR, THE USER WILL 
+			BE LOGGED OUT OF THE SYSTEM.
+
+:MAPMODE		CAUSES LOCATIONS TO BE INTERPRETED AS
+			PAGE DESCRIPTORS IN THE SAME FASHION
+			AS CAPMODE. USE :ISPACE TO UNDO.
+
+:NEWSPH			CREATES A NEW INFERIOR SPHERE WITHOUT
+			LOADING ANY FILE INTO IT. A PROGRAM
+			CAN BE WRITTEN AND RUN IN THIS FASHION
+			ALTHOUGH USING ASSEMBLER IS EASIER.
+
+:PDUMP (FILENAME)	CREATES A FILE AND DUMPS THE CURRENT
+			INFERIOR SPHERE IN PURE FORMAT.
+
+:PRINT (FILENAME)	PRINTS THE CONTENTS OF FILE ON THE TTY.
+			TYPING CONTROL S CAUSES IT TO SHUT UP
+			EVENTUALLY.
+
+:REVERSE		CAUSES BLACK TO BECOME WHITE AND WHITE
+			TO BECOME BLACK (GREEN?) ON TVS.
+
+:SETD (DIR NAME)	CAUSES DIR NAME TO BECOME THE DEFAULT
+			DIRECTORY. NOTE THAT DIR NAME IS INTER-
+			PRETTED JUST LIKE A FILE NAME, SO THAT
+			IF NO ROOT IS SPECIFIED, THE NEW DIRECTORY
+			WILL BE INFERIOR TO THE OLD ONE.
+
+:SSTAT			PRINTS THE VERSION NUMBER OF SITS AND
+			DDT AND A RANDOM NUMBER INTENDED TO BE
+			LENGTH OF TIME THE SYSTEM HAS BEEN UP.
+
+:SYMADD (FILENAME)	LOADS JUST THE SYMBOLS FROM A PURE OR
+			ABSOLUTE FORMAT FILE.
+
+
+:?			PRINTS A LIST OF COLON COMMANDS.
+
+
+
+CONTROL COMMANDS
+
+^A	APPEND THE SYMBOLS OF THIS FILE TO SYMBOL TABLE. FILE SYNTAX
+^B	ERROR
+^C	CREATE A NEW SPHERE AND PROCESS, BUT DO NOT LOAD PROGRAM
+^D	FLUSH THIS COMMAND AND GET A NEW ONE. ALSO END SEARCHES ETC.
+^E	ERROR
+^F	PRINT A DIRECTORY. FILE SYNTAX.
+^G	ERROR
+^H	ERROR
+^I(TAB)	OPEN THE LAST ADDRESS MENTIONED.
+^J(LINEFEED) OPEN THE NEXT LOCATION. (.+ LINEFEED INCREMENT)
+^K	ERROR
+^L	COPY A FILE INTO A SPHERE PAGE BY PAGE (UP TO 8 PAGES)
+^M(CR)	CLOSE ANY OPEN LOCATION.
+^N	SINGLE STEP. ARG^N STEPS ARG INSTRUCTIONS.
+^O	DELETE FILE. FILE SYNTAX.
+^P	PROCEDE LIKE $$P BUT DON'T PRINT AT BREAKPOINTS.
+^Q	PROCEDE LIKE $P.
+^R	PRINT A FILE. TYPEOUT CAN BE HALTED BY ^S.
+^S	FLUSH ANY TYPEOUT GENERATED BY THE PREVIOUS COMMAND.
+^T	ERROR
+^U	ERROR
+^V	ERROR
+^W	ERROR
+^X	SINGLE STEP. (SAME AS ^N).
+^Y	ERROR
+^Z	BREAK, THAT IS, RETURN TO DDT'S SUPERIOR VIA BREAKPOINT.
+
+
+
+
+DDT ENTRY TYPES
+
+$nB	PROCESS HIT THE nTH BREAKPOINT
+SS	THE PREVIOUS INSTRUCTION WAS SINGLE STEPPED
+BPT	PROCESS EXECUTED A RANDOM BPT INSTRUCTION
+IOT	PROCESS EXECUTED AN IOT
+TRP	PROCESS EXECUTED A TRAP INSTRUCTION
+EMT	PROCESS EXECUTED A BAD EMT
+ILL	PROCESS EXECUTED AN ILLEGAL INSTRUCTION
+FPP	FLOATING POINT EXCEPTION
+BET	BUSS ERROR
+SLE	SEGMENT LENGTH ERROR
+RDO	READ ONLY VIOLATION
+NXM	NON EXISTANT MEMORY VIOLATION
+UNK	FAULT TYPE IS NOT KNOW BY DDT
+
+
+MISCELLANEOUS COMMANDS
+
+:	DEFINE A SYMBOL. ARG<SYMB: DEFINES SYMB WITH VALUE ARG. DEFAULT ARG IS .
+^	OPEN PREVIOUS WORD (.-2)
+_	OPEN PREVIOUS LAST ADDRESS. FOO/ MOV A,B  _ OPENS A.
+[	OPEN LIKE SLASH IN WORD MODE.
+@	OPEN CONTENTS OF PC
+
+
+
+PERMANENT SYMBOLS IN DDT
+
+%0-%7	REGISTERS OF THE CURRENT PROCESS
+%PS	PROGRAM STATUS REGISTER
+%AC0-%AC6  FLOATING POINT REGISTERS
+%FPS	FLOATING POINTS STATUS REGISTER
+%SADDR	STARTING ADDRESS (WHERE YOU GO ON $G)
+%PFAUL	FAULT WORD OF THE PROCESS
+%PERRW	ERROR WORD OF THE PROCESS
+%TARGE	TARGET WORD FOR SEARCHES
+%USRBE	BEGINNING OF USER MEMORY (USED AS DEFAULT ON SEARCHES)
+%USREN	END OF USER MEMORY (ALSO DEFAULT FOR SEARCHES)
+%MXOFF	MAXIMUM OFFSET FOR RELATIVE ADDRESS TYPEOUT
+
+
+
+ALTMODE COMMANDS
+
+$^A	ERROR
+$$^A	ERROR
+$^B	TEMPORARY BYTE MODE. TYPE VALUES AS UNSIGNED INTEGERS. SET LFINC TO 1.
+$$^B	PERMANENT BYTE MODE
+$^C	TEMPORARY CAPABILITY MODE. ARG/ RETURNS VALUE OF USERS CAP NO.ARG
+$$^C	PERMANENT CAPABILITY MODE.
+$^D	ERROR
+$$^D	ERROR
+$^E	ERROR
+$$^E	ERROR
+$^F	ERROR
+$$^F	ERROR
+$^G	ERROR
+$$^G	ERROR
+$^H	ERROR
+$$^H	ERROR
+$^I	TEMPORARY I SPACE MODE. OPEN LOCATIONS FROM I SPACE.
+$$^I	PERMANENT I SPACE MODE.
+$^J	ERROR
+$$^J	ERROR
+$^K	ERROR
+$$^K	ERROR
+$^M	ERROR
+$$^M	ERROR
+$^N	ERROR
+$$^N	ERROR
+$^O	ERROR
+$$^O	ERROR
+$^P	DOUBLE PRECISON FLOATING MODE. FLOAT VALUES ARE DOUBLE PRECISION
+$$^P	SINGLE PRECISION FLOATING MODE.
+$^Q	ERROR
+$$^Q	ERROR
+$^R	ERROR
+$$^R	ERROR
+$^S	ERROR
+$$^S	ERROR
+$^T	ERROR
+$$^T	ERROR
+$^U	TEMPORARY UPT OR PAGE MAP MODE. ARG/ = VALUE OF MAP WORD ARG
+$$^U	PERMANENT UPT MODE
+$^V	ERROR
+$$^V	ERROR
+$^W	TEMPORARY D SPACE MODE. OPEN LOCATIONS FROM D SPACE.
+$$^W	PERMANENT D SPACE MODE.
+$^X	ERROR
+$$^X	ERROR
+$^Y	ERROR
+$$^Y	ERROR
+$^Z	ERROR
+$$^Z	ERROR
+
+$A	TEMPORARY ABSOLUTE MODE. ADDRESSESS TYPED AS UNSIGNED INTEGERS.
+$$A	PERMANENT ABSOLUTE MODE.
+$B	SET A BREAKPOINT. ARG$B SETS A BREAKPOINT AT LOCATION ARG.
+$$B	FLUSH ALL BREAKPOINTS. ARG$$B FLUSHES ONLY THE ONE AT ARG.
+$C	TEMPORARY CONSTANTS MODE. LOCATIONS TYPED AS UNSIGNED INTEGERS.
+$$C	PERMANENT CONSTANTS MODE.
+$D	TEMPORARY DECIMAL MODE. SETS CURRENT RADIX TO 10.
+$$D	PERMANENT DECIMAL MODE.
+$E	EFFECTIVE ADDRESS SEARCH.
+$$E	EFFECTIVE ADDRESS SEARCH.
+$F	TEMPORARY FLOAT MODE. TYPE VALUES AS FLOATING NUMBERS.
+$$F	PERMANENT FLOAT MODE.
+$G	GO. ARG$G START PROCESS AT ARG. $G STARTS AT %SADDR.
+$$G	GO. ARG$$G STARTS PROCESS LIKE ARG$G THEN SETS %SADDR TO ARG.
+$H	TEMPORARY HALFWORD MODE. VALUE TYPED AS HIGHBYTE,,LOWBYTE
+$$H	PERMANENT HALFWORD MODE.
+$I	TEMPORARY INSTRUCTION MODE. VALUE TYPED AS INSTRUCTIONS.
+$$I	PERMANENT INSTRUCTION MODE.
+$J	ERROR
+$$J	ERROR
+$K	HALF KILL SYMBOL. SYMB$K HALF KILLS SYMB.
+$$K	KILL SYMBOL. SYMB$$K KILLS SYMB. $$K KILLS ALL SYMBOLS.
+$L	LOAD FILE. CREATES SPHERE AND PROCESS. FILE SYNTAX.
+$$L	USE NEW VERSION OF LOADER WHICH ALSO READS PLOAD FILES
+$M	VALUE OF %MASK.
+$$M	VALUE OF %MASK.
+$N	NOT WORD SEARCH.
+$$N	NOT WORD SEARCH.
+$O	TEMPORARY OCTAL MODE. TYPES NUMBERS IN OCTAL RADIX.
+$$O	PERMANENT OCTAL MODE.
+$P	PROCEDE FROM A BREAKPOINT.
+$$P	PROCEDE AND PASS THROUGH BREAKS UNTIL ^D TYPED.
+$Q	VALUE OF LAST QUANTITY MENTIONED.
+$$Q	VALUE OF LAST QUANTITY MENTIONED.
+$R	TEMPORARY RELATIVE MODE. ADDRESSES TYPED RELATIVE TO SYMBOLS.
+$$R	PERMANENT RELATIVE MODE.
+$S	TEMPORARY SYMBOLIC MODE. VALUES TYPED AS SYMBOLS.
+$$S	PERMANENT SYMBOLIC MODE.
+$T	TEMPORARY TEXT MODE. VALUES TYPED AS TEXT. ASCII DEFAULT
+$$T	PERMANENT TEXT MODE. NOTE: $5T = RADIX 50, $7T = ASCII
+$U	ERROR
+$$U	ERROR
+$V	ENABLE FLOATING POINT INSTRUCTION TYPEOUT.
+$$V	DISABLE FLOATING POINT INSTRUCTION TYPEOUT.
+$W	WORD SEARCH.
+$$W	WORD SEARCH.
+$X	EXECUTE. INST$X EXECUTES THE INSTRUCTION INST IN PROCESS AND SPHERE.
+$$X	EXECUTE.
+$Y	YANK FILE. (WRITE MEMORY INTO FILE). FILE SYNTAX. ABSOLUTE FORMAT
+$$Y	YANK FILE. PURE FORMAT
+$Z	ZERO MEMORY BETWEEN BOUNDS.
+$$Z	ZERO ALL OF MEMORY.
+
