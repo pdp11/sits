@@ -4,7 +4,7 @@ drive micro-controller interfaced to the LSI-11 by means of a quad-high
 board designed by Ron Lebel.
 	The quad high board which connects to the LSI-11 bus actually
 has four relativly independant sections. There is a 128 word by 16 bit
-ROM which contains the intial bootstrap code, a power-up control/line
+PROM which contains the intial bootstrap code, a power-up control/line
 frequency clock, an interface to the SMS microcontroller and a lights
 register to control the "in use" lights on the floppy disk drives.
 The device appears to the LSI-11 programmer as 4 words of registers;
@@ -18,7 +18,7 @@ SMSDBF==SMSCSR+2	;THE DATA BUFFER BYTE
 SMSCMD==SMSDBF+2	;THE COMMAND BUFFER BYTE
 SMSLGT==SMSCMD+2	;LIGHT REGISTER
 SMSBRV==270		;TRAP VECTOR ADDRESS
-CLKBRV==100	;CLOCK TRAP ADDRESS
+CLKBRV==100		;CLOCK TRAP ADDRESS
 
 	Here are the PROM definitions. The last word of the PROM, by
 convention, is the system configuration word. Currently, only one bit
@@ -54,34 +54,39 @@ zero, and otherwise initialize the world. The power to the disk drive
 motors is controlled by a solid state relay; SMSPWR must be set to
 turn the motors on. Note that the controller will not reset if the
 drives are not powered. When the controller has reset the SMSFDO
-bit will go OFF (not on!), as will the SMSDNE and SMSCMW bits.
+bit will go OFF (not on!); the SMSDNE and SMSCMW bits will come on.
 The SMSST1 and SMSST0 bits are the status bits returned from the
 microcontroller, further described below. SMSDNE indicates that
 the micro controller has finished the last operation commanded; this
 does not imply that that it is ready for another command byte.
+If SMSINT is set when SMSDNE goes form a zero to a one, an
+interrupt will occur.
 SMSDDR indicates wheather the microcontroller is waiting to read
 a byte from the LSI or have a byte read from it; normally this bit
 is not used. It is only valid when either SMSXFW or SMSCMW is asserted.
 SMSCMW indicates that the controller is waiting for a command byte; this
 can be either the first or second byte of a command. SMSBSY indicates that
 the controller has fully acepted a command and has not yet
-completed it. SMSXFR indicates the controller is waiting to transfer
+completed it. SMSXFW indicates the controller is waiting to transfer
 a data byte through the SMSDBF register. The SMSCLE bit, if set, will
 cause the line time interrupt to occur once each power line cycle.
-	Now here is how you program this kludge: first, the drives
+
+	Now here is how you program this kludge:
+Assumning the drives have been powered down (SMSWPR is clear, either
+due to a RESET or due to being explictly cleared) the drives
 must be powered on and the controller reset; do this by setting SMSPWR
 and SMSRSB. Then wait for SMSFDO to go off; if it doesn't go off, there
-is no disk in any drive. This operation should only be performed
-when the drives were previously powered down. The way a command is
+is no disk in any drive. At this point, SMSCMW should be set,
+indicating the microcontroller is ready for a command. The
+commands are all two byte sequences. The low 3 bits of the first
+byte specify which of 8 commands is being given; in all but the
+SMSRST command, the next two bits (the 20 and 10 bits) specify
+whcih drive the command is to use. The interpertation of the
+200, 100 and 40 bits, and of the second byte of the command,
+depends upon which command is being given. The way a command is
 sent to the microcontroller is to place the first command byte
 into the SMSCMD register, wait for SMSCMW to come back on, then place
-the second byte. Here are the command byte definitions:
-
-SMSRST==0	;RESET COMMAND, SECOND BYTE IGNORED
-
-	The SMSRST command just resets the controller in the same way that
-the SMSRSB does. The SMSRST command is the only one that does not return
-any status information when it is done.
+the second byte.
 	Except for SMSRST all commands must specify the drive number (0-3)
 in the first byte. The drive number is shifted by three bits and ORed
 with the first command byte code. When any command other than SMSRST
@@ -90,6 +95,7 @@ be read before attempting to send a new command. The SMSERR bit
 is set if the status byte is reporting an error. The SMSST1 and SMSST0
 tell which of 3 possible types of status/error byte is being returned;
 if they are both zero, no status byte is available.
+Here are the possilbe error/status bytes and their meanings:
 
 ;STATUS BITS IN STATUS BYTE
 ;COMMAND STATUS
@@ -115,9 +121,18 @@ SMSCRC==40	;CRC ERROR
 SMSRWC==100	;READ/WRITE COMPLETE
 SMSDDR==200	;DELETED DATA READ
 
-	More commands:
+ Here are the command byte definitions:
+
+SMSRST==0	;RESET COMMAND, SECOND BYTE IGNORED
+
+	The SMSRST command just resets the controller in the same way that
+the SMSRSB does. The SMSRST command is the only one that does not return
+any status information when it is done.
+
 SMSSEK==1	;SEEK, OR WITH DISK DRIVE_3, SECOND BYTE TRACK ADDRESS
 
+	There are 77 (decimal) trakcs of data on the floppy diskette,
+numbered 0 through 76 inclusive.
 	The SMSSEK command must be used to position the disk heads
 before attempting to read or write data. After sending the second byte
 (the track number to seek to), wait for SMSXFR to be set. At this point,
@@ -139,28 +154,67 @@ SMSWRT==4	;WRITE, OR WITH DISK DRIVE_3 AND:
 		  ;SECOND BYTE ON WRITE IS SECTOR
 SMSWRD==5	;WRITE WITH DELETED DATA MARK, OTHERWISE SAME AS WRITE
 
-	Due to limitations of the LSI-11 and the SGTL interface,
+	There are 26 (decimal) sectors per track on the floppy
+diskette, each containing 128 (decimal) bytes of data. The sectors
+are number 1 through 26 inclusive. Additionlly, each sector has a bit
+called the deleteed data mark. The interpertation of this bit
+is a function of the software; it is cleared by writing the
+sector with the SMSWRT command, and set by writing with the SMSWRD
+command. The state of the bit is indicated in the operation status
+byte that is available after reading a sector.
+	The microcontroller reading and writing commands provide for
+data transfer either directly to the host processor from the disk
+or indirect transfer by way of a buffer. Due to limitations of
+the LSI-11 and the SGTL interface,
 all data moving must be done by way of the buffer internal to the
 microcontroller. E.g. to read a sector, first the sector must be
 read from the disk to the buffer (SMSRED with the SMSDTB bit set)
 then the data must be read from the buffer to the host (SMSRED
-with SMSBTH set). Of course, in the write case first the data
-must be put in the buffer then actually written to the disk.
+with SMSBTH set).
 Except for this limitation reading and writing data is very
-straightforward. It should be noted that once started, buffer
-operations can proceed with the full speed of the LSI-11.
-As with all commands, reads and writes, weather to the disk or
-to the buffer, return status when done. In the case of a buffer operation,
-this means AFTER reading or writing the 128 data bytes for the
-sector.
+straightforward. In the case of a read, first the data is transfered
+to the buffer, specifing the desired sector, and the status is
+read form the controller. If a disk error has occured, this status
+byte will indicate it, and the read can be retryed or aborted.
+The buffer read operation is then commanded; it need not specify a sector,
+although the second byte must still be sent even though it is
+ignored. When the SMSXFW bit is set, the microcontroller is ready
+to transfer data. Once started, buffer
+operations can proceed with the full speed of the LSI-11 for the
+full 128 characters. E.g.:
 
+	1$:	BIT #SMSXFW,SMSCSR
+		BEQ 1$
+		MOV #SMSDBF,%0
+		MOV #BUFFER,%1
+		MOV #128.,%2
+	2$:	MOVB (%0),(%1)+
+		SOB %2,2$
 
+AFTER the 128 bytes are transfered, there will be an operation status byte
+available as usual. Writes are performed similarly to reads, but the
+data is first put into the microcontroler's buffer, then written.
 
-
-
-
+	Miscelaneous commands:
 
 SMSRID==3	;READ NEXT SECTOR ID, OR WITH DISK DRIVE_3, SECOND BYTE IGNORED
+
+	This command reads the sector header on the next available
+floppy diskette sector and returns two bytes; the first is the track address
+and the second is the sector address. There is no operation status, as such,
+returned.
+
 SMSFMT==6	;FORMAT THE TRACK THE HEADS ARE OVER
 		 ;OR WITH DISK DRIVE_3, SECOND BYTE IS TRACK ADDRESS TO WRITE ON DISK
+
+	This command formats a whole trakc of the floppy diskette; the track address
+(which is written in the header of every floppy diskette sector) is provided in
+the second byte. In order to properly format a diskette the user must insure
+that the heads have been properly postioned by a seek command using the same
+track address specified in the format command.
+
 SMSSTS==7	;READ STATUS, OR WITH DISK DRIVE_3, SECOND BYTE IGNORED
+
+	THe only function of this command is to return a status byte
+for the specified drive. This status byte is the same as that described
+above in the case SMSST1=1, SMSST0=0
