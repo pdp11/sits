@@ -15590,6 +15590,7 @@ LOOP1:	MOV 2(P),C	;A:counter y,B:pointer into array C:counter x
 ;D: pointer into display mem. E:,F: used for shift
 ;stack @P shift,2(P) counter x needed to restore,4(P) points to next line of disp. mem.
 LOOP2:	MOV #-1,E		;SET ALL THE BITS IN E FOR THE SHIFT	MOV (B)+,F
+	MOV (B)+,F
 	ASHC (P),E
 
 ;	COM F				;Write words in F and E on screen.
