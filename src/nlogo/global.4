@@ -4,9 +4,11 @@
 			.IF DF PASS2
 				.IF NDF X
 					X==0
-					.PRINT /X UNDEFINED GLOBAL/
+					.PRINT /X UNDEFINED GLOBAL
+/
 				 .IFF
-					.PRINT /X DEFINED GLOBAL/
+					.PRINT /X DEFINED GLOBAL
+/
 				.ENDC
 			.ENDC
 		.ENDC
