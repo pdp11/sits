@@ -2,6 +2,10 @@
 ;warning, this program suffers from an overdose of local symbols
 
 .sbttl definitions
+.if ndf %fnam2
+rt11=1
+sits=0
+.endc
 
 .iif ndf sits,sits=1		;if =1, use sits system calls
 .iif ndf rt11,rt11=0		;if =1, use rt11 system calls
@@ -13,10 +17,9 @@ tvs=0
 .iif z lsi,prtnum=14		;on 11/45, printer tty number
 .iif nz lsi,prtnum=1		;on the lsi
 
-vern=%fnam2
+.iif nz rt11,vern=%fnam2
 
 .if nz sits
-.insrt sits;sitmac >
 .macro dcs name,val
 name==val
 .endm
@@ -32,6 +35,31 @@ f=%5
 p=%6
 pc=%7
 
+
+.macro save things
+	.irp  x,<things>
+		.if b x
+			tst -(p)
+		.iff
+			.if idn x,#0
+				clr -(p)
+			.iff
+				mov x,-(p)
+			.endc
+		.endc
+	.endm
+.endm
+
+.macro rest things
+	.irp x,<things>
+		.if b x
+			tst (p)+
+		.iff
+			mov (p)+,x
+		.endc
+	.endm
+.endm
+
 ;Macro to assemble code for english
 .macro eng foo
 .iif z frp,	foo
@@ -43,6 +71,7 @@ pc=%7
 .endm
 
 .sbttl miscelaneous storage
+.if z rt11
 bptbrv=14
 trpbrv=34
 .=bptbrv
@@ -59,6 +88,7 @@ trpbrv=34
 	jmp zstart
 .=400
 .endc	;nz lsi
+.endc	;z rt11
 
 .if nz sits&lsi
 lstty=2
@@ -307,9 +337,11 @@ menuoh=14			;overhead, where the text starts
 
 .macro menui text,dispat,var,varprt,def1,insrot,io
 .if df pass2
+.if nb dispat
 .if ndf dispat
 .error dispat not defined
 dispat=chrund
+.endc
 .endc
 .endc
 foo=menuex
@@ -686,6 +718,7 @@ ertab:	errdef ding		;just ring the bell
 	.even
 .endm
 
+.if nz sits
 filert:
 eng <	dferr .efnf,<File not found>>
 fr  <	dferr .efnf,<N'ai pas trouve ce ficher>>
@@ -697,7 +730,7 @@ fr  <	dferr .edfl,<Le disque est rempli>>
 	dferr .edske,<Disk error>
 	dferr .edvbe,<Bad disk error, check disk>
 	dferr 0,<Strange file error>
-
+.endc ;nz sits
 
 bufful:
 eng <	.asciz /Memory full/>
@@ -884,24 +917,24 @@ cleanu:	mov buffer,a
 	jsr pc,shrink		;make it smaller if too big
 	mov #free,a
 	clr b			;used to accumlate amount of free space
-2$:	mov (a),a		;next free block
-	beq 3$			;done
+1$:	mov (a),a		;next free block
+	beq 2$			;done
 	add bllen(a),b		;add in this block
 	cmp minmem,b		;have lots?
-	bhi 2$			;nope, keep looking
+	bhi 1$			;nope, keep looking
 	cmp #bufnfl,erstat	;is the message buffer near full?
-	bne 6$			;nope
+	bne 4$			;nope
 	cmp minme2,b		;have things gotten much better?
-	bhi 2$			;well, maybe not
+	bhi 1$			;well, maybe not
 	clr erstat		;flush message
-	br 5$
-3$:	mov #bufnfl,erstat	;display this error message
-5$:
-6$:
+	br 3$
+2$:	mov #bufnfl,erstat	;display this error message
+3$:
+4$:
 ;flush extra whitespace off the end of the curlin
 cleanw:	mov curlin,d		;current line number
 	cmp bufend,d		;at the end of the buffer?
-	beq 3$			;yup
+	beq 4$			;yup
 	asl d
 	add buffer,d
 	add #blhead,d		;get a pointer to the current line
@@ -909,32 +942,32 @@ cleanw:	mov curlin,d		;current line number
 	mov blused(f),e		;count of chars on the line
 	add e,f			;pointer to the end of the line
 	sub curcar,e		;count of possibly flushable characters
-	beq 3$
+	beq 4$
 	movb blhead-1(f),c	;end of line char
 	jsr pc,whitep		;whitespace?
-	bne 3$			;nope
+	bne 4$			;nope
 	cmp #1,e		;only one character?
-	beq 4$
+	beq 1$
 	movb blhead-2(f),c	;end of line-1
 	jsr pc,atribp		;atribute char?
-	beq 3$			;yup, don't delete anything
-4$:	jsr pc,invlin		;looks like we will clobber the line
+	beq 4$			;yup, don't delete anything
+1$:	jsr pc,invlin		;looks like we will clobber the line
 	mov (d),f		;pointer to the line
 	mov f,a			;copy it
 	mov #-1,blplen(a)	;invalidate the print length
 	add blused(a),f		;count of chars on the line
 	add #blhead,f
-1$:	movb -(f),c		;get the character
+2$:	movb -(f),c		;get the character
 	jsr pc,whitep		;is it whitespace?
-	bne 3$			;nope, keep it
+	bne 4$			;nope, keep it
 	cmp #1,blused(a)	;only one character left?
-	beq 2$			;delete it
+	beq 3$			;delete it
 	cmpb #atribc,-1(f)	;atribute char before it?
-	blos 3$			;yup
-2$:	dec blused(a)		;one less char in line
-	sob e,1$
+	blos 4$			;yup
+3$:	dec blused(a)		;one less char in line
+	sob e,2$
 
-3$:	rts pc
+4$:	rts pc
 
 
 .sbttl storage allocation
@@ -996,24 +1029,24 @@ crbuff:	mov #ibufsz,a
 ;it is assumed that everyone asks for at least 4 bytes, which are cleared.
 ;the length requested doen't include the blhead byte header (link and real length)
 getblk:	save <a,b,c>
-9$:	mov #free,b		;pointer to the free list pointer
+1$:	mov #free,b		;pointer to the free list pointer
 2$:	mov b,c			;save the back pointer
 	mov (b),b		;go to the next block
-	bne 4$			;and see if it is big enough
+	bne 3$			;and see if it is big enough
 	rest <c,b,a>
 	sez
 	rts pc			;lose, return with z set
 				;later, this should consolidate free space
 
-4$:	cmp bllen(b),a		;big enough?
+3$:	cmp bllen(b),a		;big enough?
 	blo 2$			;no, lose
 
-1$:	save d
+4$:	save d
 	mov a,d			;amount of space wanted
 	sub bllen(b),d		;minus amount gotten
 	neg d			;amount left over
 	cmp #bltiny,d		;only a tiny amount left over?
-	bhis 3$			;yeah, take the whole thing
+	bhis 5$			;yeah, take the whole thing
 	add a,(c)		;move previous pointer up by amoutn being gobbled
 	add #blhead,(c)		;plus amount for header
 	mov (c),c
@@ -1021,7 +1054,7 @@ getblk:	save <a,b,c>
 	sub #blhead,d		;lose blhead in the header
 	mov d,bllen(c)		;set size of the free block
 
-3$:	mov (b),(c)		;link the block out of the free list
+5$:	mov (b),(c)		;link the block out of the free list
 	rest d
 	mov b,a
 	clr (b)			;clear out the link word
@@ -1034,50 +1067,50 @@ getblk:	save <a,b,c>
 ;free the block pointed to by a
 freeb:	save <a,b,c,d>
 	cmp #space,a		;make sure this is a good block address
-	blos 10$		;yup
+	blos 1$		;yup
 	bpt			;somebody lost
-10$:	mov #free,b		;start of the free list
-1$:	mov (b),c		;address of a free block
-	beq 2$			;end of the free list
+1$:	mov #free,b		;start of the free list
+2$:	mov (b),c		;address of a free block
+	beq 3$			;end of the free list
 	mov c,b			;for the next time around
 	mov c,d			;copy pointer
 	add bllen(c),d		;end of the block
 	add #blhead,d		;plus the header words
 	cmp d,a			;is the new free block at the end of an old free block?
-	bne 1$			;not this one anyway
+	bne 2$			;not this one anyway
 	add bllen(a),bllen(c)	;add the new space into the old block
 	add #blhead,bllen(c)	;and the header space (only need one header)
-	mov c,a			;for 3$
-	br 3$			;do something about running into the next block
-2$:	mov free,(a)		;the block didn't get absorbed, put it on the free list
+	mov c,a			;for 4$
+	br 4$			;do something about running into the next block
+3$:	mov free,(a)		;the block didn't get absorbed, put it on the free list
 	mov a,free		;set the block at the head of the free list
 ;here, see if the block pointed to by a runs into any other block on the free list
-3$:	mov #free,d		;the free list
+4$:	mov #free,d		;the free list
 	mov a,b			;pointer to block
 	add bllen(a),b		;add in the size of the block
 	add #blhead,b		;and the header
-4$:	cmp b,(d)		;is the next block at the end of me?
-	beq 5$			;yes, go splice it on
+5$:	cmp b,(d)		;is the next block at the end of me?
+	beq 9$			;yes, go splice it on
 	mov (d),d		;next?
-	bne 4$
+	bne 5$
 6$:	mov #free,b		;now put the new thing in the right place
-11$:	mov b,a			;next
+7$:	mov b,a			;next
 	mov (a),b		;get the next thing
-	beq 12$			;no next thing
+	beq 8$			;no next thing
 	tst (b)			;is there somthing after that?
-	beq 12$			;nope
+	beq 8$			;nope
 	cmp b,(b)		;is the current thing before the next thing?
-	blo 11$			;yup, nothing to do
+	blo 7$			;yup, nothing to do
 	mov (b),c		;pointer to the next block
 	mov c,(a)		;fix the previous pointer
 	mov (c),(b)		;the former previous block becomes the next block
 	mov b,(c)		;and vica-worser
 	mov c,b
-	br 11$			;bubble down the chain
-12$:	rest <d,c,b,a>
+	br 7$			;bubble down the chain
+8$:	rest <d,c,b,a>
 	rts pc
 
-5$:	mov (d),c		;pointer to the extra block
+9$:	mov (d),c		;pointer to the extra block
 	mov (c),(d)		;link out the block
 	add bllen(c),bllen(a)	;give the space to the rmaining block
 	add #blhead,bllen(a)	;including the header
@@ -1089,29 +1122,29 @@ freeb:	save <a,b,c,d>
 ;as a special case, if the pointer passed is a zero a new block is simply created
 expand:	save <b,c,d,e>
 	cmp #blhead,b		;always make him take at least a header worth
-	blos 10$		;branch if he is asking for more
+	blos 1$		;branch if he is asking for more
 	mov #blhead,b		;force that much
-10$:	mov a,c			;pointer to the block
+1$:	mov a,c			;pointer to the block
 	cmp #space,a		;check for bugs
-	blos 8$			;don't try to expand block below real space
+	blos 2$			;don't try to expand block below real space
 	bpt
-8$:	add bllen(a),c		;pointer to the end of the block
+2$:	add bllen(a),c		;pointer to the end of the block
 	add #blhead,c		;plus the header
-	br 3$			;punt, pending debugging of this feature
+	br 7$			;punt, pending debugging of this feature
 	mov #free,d		;free list pointer
-1$:	cmp c,(d)		;does this free block begin at our end?
-	beq 2$			;yes!!!
+3$:	cmp c,(d)		;does this free block begin at our end?
+	beq 4$			;yes!!!
 	mov (d),d		;point to the next one
-	bne 1$
-	br 3$			;punt, have to copy the block
+	bne 3$
+	br 7$			;punt, have to copy the block
 
-2$:	mov (d),e		;pointer to the free block
+4$:	mov (d),e		;pointer to the free block
 	cmp b,bllen(e)		;is there enough space there?
-	bhi 3$			;nope, punt
+	bhi 7$			;nope, punt
 	mov bllen(e),c		;size of the free block
 	sub b,c			;size of free block when done
 	cmp #bltiny,c		;tiny?
-	blo 4$			;no, make a new free block
+	blo 6$			;no, make a new free block
 	mov (e),(d)		;splice out this block
 	add bllen(e),bllen(a)	;add in the space
 	add #blhead,bllen(a)	;and the header
@@ -1119,7 +1152,7 @@ expand:	save <b,c,d,e>
 	clz
 	rts pc
 
-4$:	add b,bllen(a)		;give him the requested space
+6$:	add b,bllen(a)		;give him the requested space
 	add b,(d)		;move up the free list pointer
 	mov e,c			;pointer the block we are taking from
 	add b,c			;new free block
@@ -1129,28 +1162,28 @@ expand:	save <b,c,d,e>
 	br 5$			;return
 
 ;come here if we can't annex space from the next block => we have to copy
-3$:	mov a,c			;pointer to the old block
+7$:	mov a,c			;pointer to the old block
 	mov b,a			;space increment desired
 	add bllen(c),a		;size of the old block
 	jsr pc,getblk		;try to get a block of the new size
-	beq 6$			;lose!!
+	beq 10$			;lose!!
 	mov c,e			;save a pointer to the old
 	mov bllen(c),d		;size of the old block
 	asr d			;in words
-	beq 11$			;previous thing was zero length
+	beq 9$			;previous thing was zero length
 	mov a,b			;pointer to the new
 	mov blused(c),blused(b)	;same amount of space used in both
 	add #blhead,b		;get past the header in the new
 	add #blhead,c		;get past the header in the old
-7$:	mov (c)+,(b)+		;copy the words
-	sob d,7$
-11$:	save a
+8$:	mov (c)+,(b)+		;copy the words
+	sob d,8$
+9$:	save a
 	mov e,a			;get the old pointer back
 	jsr pc,freeb		;free the old block
 	rest a			;get back the new block pointer
 	br 5$			;and return sucessfully
 
-6$:	rest <e,d,c,b>
+10$:	rest <e,d,c,b>
 	sez			;failing return
 	rts pc
 
@@ -1177,12 +1210,12 @@ shrink:	save <a,b,c>
 ;return with z clear unless failure
 copy:	save <c,b>
 	mov a,b			;copy the pointer
-	bne 10$			;check for zero pointer
+	bne 1$			;check for zero pointer
 	bpt			;somebody lost
-10$:	mov bllen(b),a		;get the length
+1$:	mov bllen(b),a		;get the length
 	mov a,c			;might as well copy it while we have it
 	jsr pc,getblk		;get the new block
-	beq 1$			;failed
+	beq 4$			;failed
 	save a			;the new block pointer
 	mov blused(b),blused(a)	;same amount of used space in both
 	mov #-1,blplen(a)	;but the new one might have different print lenght
@@ -1196,7 +1229,7 @@ copy:	save <c,b>
 	clz
 	rts pc
 
-1$:	rest <b,c>
+4$:	rest <b,c>
 	sez
 	rts pc
 
@@ -1212,7 +1245,7 @@ updatf:	jsr f,acsav		;save all the register
 	mov toplin,a		;starting with this top line
 	mov a,ntopln		;assume this will be the new top line
 	cmp a,curlin		;is the cursor on the top line?
-	bne 2$			;nope, go find the cursor
+	bne 1$			;nope, go find the cursor
 	bhi updatp		;if the cursor is above the top line just forget it
 	cmp curcar,screes	;is the cursor before the starting character?
 				;note that both curcar and screes are character
@@ -1221,10 +1254,10 @@ updatf:	jsr f,acsav		;save all the register
 	br updats		;ok, we will keep this window
 
 ;now loop through counting lines to see if the cursor will be on the screen
-2$:	mov screls,b		;the first line starts here instead of zero
+1$:	mov screls,b		;the first line starts here instead of zero
 	clr f			;line number we are at
-3$:	cmp a,curlin		;are we on the right line?
-	beq 4$			;yup
+2$:	cmp a,curlin		;are we on the right line?
+	beq 3$			;yup
 	cmp a,bufend		;is the old top line below the buffer end?
 	bhis updatp		;yes, punt for a new window
 	mov #-1,d		;get length to end of line
@@ -1234,16 +1267,16 @@ updatf:	jsr f,acsav		;save all the register
 	cmp f,numlin		;have we exceeded our space?
 	bhis updatp		;yup, go choose a new window
 	inc a
-	br 3$			;loop to bottom of screen
+	br 2$			;loop to bottom of screen
 
-4$:	mov curcar,d		;if we terminate at the cursor
+3$:	mov curcar,d		;if we terminate at the cursor
 	cmp a,bufend		;off the end of the buffer?
-	bne 5$			;nope
+	bne 4$			;nope
 	inc f			;add one for a blank line
-	br 6$
-5$:	jsr pc,getlnl		;will it fit?
+	br 5$
+4$:	jsr pc,getlnl		;will it fit?
 	add c,f			;number of lines added
-6$:	cmp f,numlin		;fit?
+5$:	cmp f,numlin		;fit?
 	bhi updatp		;nope, have to choose a new window
 	br updats		;yes, the toplin we have is ok
 
@@ -1254,34 +1287,34 @@ updatp:	mov curlin,a		;the line the cursor is on
 	mov f,e			;the full screen
 	asr f			;half the screen
 	cmp a,bufend		;is the cursor at the end of the buffer?
-	beq 4$			;yup, start by moving up a line
+	beq 5$			;yup, start by moving up a line
 	mov curcar,d		;the cursor
 	jsr pc,getdps		;get that as a display character position in the line in a
 	jsr pc,getlnl		;does the current line take more space than we have?
 	cmp c,f
-	blos 3$			;no, it will all fit on the screen
+	blos 2$			;no, it will all fit on the screen
 1$:	add numcar,b		;one line's worth
 	jsr pc,getlnl		;will it fit now?
 	cmp c,f
 	bhi 1$			;nope, keep trying
-	br 9$			;go set ntopln and go to redisplay
+	br 4$			;go set ntopln and go to redisplay
 
-3$:	mov #-1,d		;take full lines
+2$:	mov #-1,d		;take full lines
 	jsr pc,getlnl		;how much this line will take up
 	sub c,e			;too much?
-	blt 9$			;yup, don't display it
+	blt 4$			;yup, don't display it
 	sub c,f			;take this much
-	ble 9$			;pretty much done
-2$:	dec a			;go up one line
-	bgt 3$			;try the next line up
+	ble 4$			;pretty much done
+3$:	dec a			;go up one line
+	bgt 2$			;try the next line up
 	clr a			;start on line zero then
 
-9$:	mov b,nscres		;this will be the start of the top line
+4$:	mov b,nscres		;this will be the start of the top line
 	mov a,ntopln
 	br updats		;actually update the screen
 
-4$:	cmpb -(e),-(f)		;decrement
-	br 2$
+5$:	cmpb -(e),-(f)		;decrement
+	br 3$
 
 ;Now we have the new values for toplin and screes (ntopln and nscres) and
 ;we want to fill in nscren, nscrls and nscrle with good stuff. Then we will
@@ -1338,87 +1371,87 @@ updatd:	clr a			;this will be where we are in the old screen
 	mov numlin,c		;this will be the fence to stop against
 	asl c			;as words
 1$:	jsr pc,upcmpl		;compare lines
-	bne 2$
-19$:	cmp (a)+,(b)+		;advance both pointers
+	bne 3$
+2$:	cmp (a)+,(b)+		;advance both pointers
 	cmp a,c			;at the end?
 	bne 1$			;nope
 	mov ntopln,toplin
 	br updatc		;done, go update the cursor
 
 ;we need to fix the line displayed at a on the real screen
-2$:	tst idline		;do we have insert/delete?
-	beq 10$			;nope, just do standard thing
+3$:	tst idline		;do we have insert/delete?
+	beq 12$			;nope, just do standard thing
 ;now see if we can do delete lines to move a correct line up
 	save a			;save the current place
 	mov maxid,d		;maximum number of inserts or deletes to do
 	cmp #blank,nscren(b)	;is the new line just a blank?
-	beq 5$			;yes, don't go to any trouble for it
-3$:	tst (a)+		;next in the old screen
+	beq 7$			;yes, don't go to any trouble for it
+4$:	tst (a)+		;next in the old screen
 	cmp a,c			;at the end?
-	beq 5$			;yup
+	beq 7$			;yup
 	jsr pc,upcmpl		;are these lines the same?
-	bne 4$			;nope
-	mov (p),a		;restore a
-6$:	jsr pc,updell		;delete a line
-	jsr pc,upcmpl		;are we to the line that was the same?
 	bne 6$			;nope
+	mov (p),a		;restore a
+5$:	jsr pc,updell		;delete a line
+	jsr pc,upcmpl		;are we to the line that was the same?
+	bne 5$			;nope
 	rest a
-	br 19$			;loop around, line is now correct
-4$:	sob d,3$		;do for maxid
+	br 2$			;loop around, line is now correct
+6$:	sob d,4$		;do for maxid
 
 ;Now we couldn't win with delete line so we will have to rewrite the
 ;current line. Check to see if the current old line will be useful within
 ;maxid lines of where it is.
-5$:	mov (p),a		;saved above
+7$:	mov (p),a		;saved above
 	mov maxid,d		;maximum number of insert lines to allow
 	save b			;pointer into new frob
 	bit #177776,screen(a)	;is the old line unkown or blank?
-	beq 11$			;don't worry about it then
-7$:	tst (b)+		;next
+	beq 10$			;don't worry about it then
+8$:	tst (b)+		;next
 	cmp b,c			;at end?
-	beq 11$			;yup, have to just redisplay
+	beq 10$			;yup, have to just redisplay
 	jsr pc,upcmpl		;are these lines the same?
-	bne 9$			;nope
+	bne 11$			;nope
 	mov (p),b		;recover new screen pointer
-8$:	jsr pc,upinsl		;insert a blank line
+9$:	jsr pc,upinsl		;insert a blank line
 	cmp (a)+,(b)+		;old line got moved by one
 	jsr pc,upcmpl		;are we to the line that was the same?
-	bne 8$			;nope
-11$:	rest <b,a>
-	br 10$			;loop around
-9$:	sob d,7$
+	bne 9$			;nope
+10$:	rest <b,a>
+	br 12$			;loop around
+11$:	sob d,8$
 	rest <b,a>
 
-10$:	jsr pc,redisl		;redisplay the line at (b), clobber (a)
-	br 19$			;do next line
+12$:	jsr pc,redisl		;redisplay the line at (b), clobber (a)
+	br 2$			;do next line
 
 ;Now put the cursor at the right place
 updatc:	mov curcar,d		;the cursor character address
 	mov curlin,a
 	cmp a,bufend		;last line?
-	beq 6$			;yup, just use curcar
+	beq 1$			;yup, just use curcar
 	jsr pc,getdps		;get it as a display address
-6$:	clr a			;screen pointer
+1$:	clr a			;screen pointer
 	mov curlin,b
 	sub toplin,b		;number of lines down the screen
-	beq 3$			;on the first line
-1$:	tst screls(a)		;is this a begining of a new line?
-	bne 2$			;nope
+	beq 4$			;on the first line
+2$:	tst screls(a)		;is this a begining of a new line?
+	bne 3$			;nope
 	dec b			;a new line
-	blt 3$			;found the right line
-2$:	tst (a)+
-	br 1$
-3$:	cmp d,screle(a)		;before the end of this line?
-	blos 4$			;yup, on this screen line
+	blt 4$			;found the right line
+3$:	tst (a)+
+	br 2$
+4$:	cmp d,screle(a)		;before the end of this line?
+	blos 5$			;yup, on this screen line
 	tst (a)+
-	br 3$
-4$:	blo 7$			;branch if not eq
+	br 4$
+5$:	blo 6$			;branch if not eq
 	cmp #blank,screen(a)	;special case
-	beq 7$
+	beq 6$
 	cmp screen(a),screen+2(a)	;does the line overflow?
-	bne 7$			;nope
+	bne 6$			;nope
 	tst (a)+		;yup, display on the next line
-7$:	mov d,b
+6$:	mov d,b
 	sub screls(a),b		;right position on the line
 	asr a
 	jsr pc,babsps		;put the cursor there
@@ -1447,33 +1480,33 @@ redisl:	jsr f,acsav		;just in case
 	mov #oline,e
 	mov #nline,f
 1$:	cmp e,2(p)		;at the end of the old line?
-	beq 5$			;yup
+	beq 2$			;yup
 	cmp f,(p)		;how about the end of the new line?
 	beq 3$
 	cmp (e)+,(f)+		;do the lines match?
 	beq 1$			;yup
 	cmp -(e),-(f)		;back to the unmatched characters
-5$:	cmp f,(p)		;at the end of the new line too?
-	beq 4$			;yup, nothing to do then
+2$:	cmp f,(p)		;at the end of the new line too?
+	beq 5$			;yup, nothing to do then
 3$:	asr a			;the line we are on
 	mov f,b
 	sub #nline,b
 	asr b
 	jsr pc,babsps
 	cmp e,2(p)		;was it the old line that ended first?
-	beq 2$			;yup, don't need to clear
+	beq 4$			;yup, don't need to clear
 	save a
 	mov 4(p),a
 	sub e,a			;number of characters to clear
 	asr a
 	jsr pc,@sclrel		;kill to the end of the line, with special padding
 	rest a
-2$:	cmp f,(p)		;at the end?
-	beq 4$			;nope
+4$:	cmp f,(p)		;at the end?
+	beq 5$			;nope
 	mov (f)+,c		;get a character
 	jsr pc,dischr		;display it
-	br 2$
-4$:	clr c
+	br 4$
+5$:	clr c
 	jsr pc,@setatr		;make sure the atributes are clear
 	cmp (p)+,(p)+
 	jsr f,acres
@@ -1486,9 +1519,9 @@ redisl:	jsr f,acsav		;just in case
 redprt:	save <a,b,c>
 	mov numcar,a		;all lines are this long
 	cmp #blank,e		;is there a line to print?
-	beq 9$			;no, exit
+	beq 5$			;no, exit
 	tst e			;is the line garbage?
-	beq 10$			;yup, fill with garbage
+	beq 6$			;yup, fill with garbage
 
 1$:	save a
 	mov e,a
@@ -1499,26 +1532,26 @@ redprt:	save <a,b,c>
 	add #blhead,b		;pointer to the last real character
 	add #blhead,e
 	add d,e			;point to the first character to be displayed
-4$:	clr (f)
-2$:	cmp e,b			;at the end?
-	beq 9$			;exit
+2$:	clr (f)
+3$:	cmp e,b			;at the end?
+	beq 5$			;exit
 	movb (e)+,(f)		;put the character in the line buffer
 	cmpb #atribc,(f)	;attributes?
-	blos 5$			;yup
+	blos 4$			;yup
 	tst (f)+		;next place
-	sob a,4$		;one more place taken
+	sob a,2$		;one more place taken
 	tst -(f)		;go back
 	mov #rgtchr,(f)+	;clobber to continue character
-	br 9$			;and return
-5$:	bisb (f),1(f)		;set in the bits
-	br 2$
+	br 5$			;and return
+4$:	bisb (f),1(f)		;set in the bits
+	br 3$
 
-9$:	rest <c,b,a>
+5$:	rest <c,b,a>
 	rts pc
 
-10$:	mov #-1,(f)+
-	sob a,10$
-	br 9$
+6$:	mov #-1,(f)+
+	sob a,6$
+	br 5$
 
 ;Display the character in c on the screen. Assume the cursor is positioned properly.
 dischr:	swab c
@@ -1654,11 +1687,11 @@ getlnl:	save a
 ;The length is returned in c. Also, the last character position needed is returned in d.
 getlen:	save <e,f>
 1$:	mov blplen(a),f		;get the stored lenght
-	bge 3$			;we have a valid stored length
+	bge 5$			;we have a valid stored length
 	clr f			;length
 	save a
 	mov blused(a),e		;count of real characters
-	beq 5$			;none, zero length
+	beq 4$			;none, zero length
 	add #blhead,a		;get to the data
 2$:	movb (a)+,c		;get a character
 	jsr pc,charsz		;get it's size
@@ -1667,33 +1700,33 @@ getlen:	save <e,f>
 	mov numcar,c		;number of characters on a line
 	dec c			;leave room for the continue character
 	cmp c,f			;is this line smaller than one line?
-	bhis 5$			;yup, simple case
+	bhis 4$			;yup, simple case
 	div c,e			;get the number of lines it takes
 	save f			;save the remainder
-	bne 7$			;branch if there are any characters on the next line
+	bne 3$			;branch if there are any characters on the next line
 	dec (p)			;don't need a continue line then
-7$:	mul numcar,e		;now get the number of chars including the continue char
+3$:	mul numcar,e		;now get the number of chars including the continue char
 	add (p)+,f		;total
-5$:	rest a
+4$:	rest a
 	mov f,blplen(a)		;the print length
 	br 1$			;go try that again
 
-3$:	mov #1,c		;most lines are one long
+5$:	mov #1,c		;most lines are one long
 	cmp d,f			;is the ending place beyond the line?
 	bhis 6$			;yes, ignore the ending
 	mov d,f			;end at the right place
 6$:	mov f,d			;tell the caller where we ended
 	tst chop		;all are if chop is set
-	bne 4$			;yup, done
+	bne 7$			;yup, done
 	cmp numcar,f		;less than one line?
-	bhis 4$			;yup
+	bhis 7$			;yup
 	sub b,f			;starting place
 	clr e			;for the divide
 	dec f			;fencepost
 	div numcar,e
 	mov e,c			;number of lines
 	inc c
-4$:	rest <f,e>
+7$:	rest <f,e>
 	rts pc
 
 ;Return in c the number of print positions taken by the character in c.
@@ -1711,32 +1744,32 @@ charsz:	cmpb #atribc,c		;is it an atribute character?
 getdps:	save <a,b,c,f>
 	clr -(p)		;counter
 	tst d			;zero?
-	beq 3$			;just return zero
+	beq 5$			;just return zero
 	asl a
 	add buffer,a
 	mov blhead(a),a
 	clr b
 	cmp d,blused(a)		;using the whole line?
-	bne 4$			;nope
-5$:	mov blplen(a),(p)	;using the whole line, just give the print length
-	bge 3$			;had a valid length
+	bne 2$			;nope
+1$:	mov blplen(a),(p)	;using the whole line, just give the print length
+	bge 5$			;had a valid length
 	save d
 	jsr pc,getlen		;to set blplen
 	rest d
-	br 5$
-4$:	add #blhead,a		;point to the data
+	br 1$
+2$:	add #blhead,a		;point to the data
 	mov numcar,f
 	dec f
-1$:	movb (a)+,c		;get a character
+3$:	movb (a)+,c		;get a character
 	jsr pc,charsz		;get it's size
 	add c,(p)		;count
 	add c,b			;count for this line
 	cmp f,b			;overflew a line?
-	bhi 2$			;nope
+	bhi 4$			;nope
 	sub f,b
 	inc (p)
-2$:	sob d,1$
-3$:	rest <d,f,c,b,a>
+4$:	sob d,3$
+5$:	rest <d,f,c,b,a>
 	rts pc
 
 ;Get character position. Given a screen character position in d and a line
@@ -1788,38 +1821,38 @@ dstat:	jsr f,acsav
 	clr dstcar		;start at the beggining of the line
 	mov #statar,a		;the status array
 1$:	mov (a)+,b		;get an item
-	beq 8$			;null
+	beq 3$			;null
 	jsr pc,stype		;type it out
 2$:	mov #40,c
 	jsr pc,stypec		;separate with spaces
-8$:	cmp #erstat,a		;about to do the error message?
-	bne 40$			;nope
+3$:	cmp #erstat,a		;about to do the error message?
+	bne 4$			;nope
 	mov (a)+,b		;get an the error message
-	beq 40$			;null
+	beq 4$			;null
 	movb #377,(f)+		;kludge to ensure that the line gets cleared each time
 	jsr pc,@blink		;turn on blink
 	jsr pc,stype		;type it out
 	jsr pc,@nblink		;turn blink off
 	br 2$			;go type the space, etc
-40$:	cmp #strech+2,a		;just did echo string?
-	bne 42$			;nope
+4$:	cmp #strech+2,a		;just did echo string?
+	bne 5$			;nope
 	save dstcar		;to position cursor
-42$:	cmp #statae,a		;done?
+5$:	cmp #statae,a		;done?
 	bne 1$			;next one
 	mov #40,c
 	mov numcar,a		;size of the line
 	sub dstcar,a		;space left
 	sub #2,a		;one space for !, one for fencepost
-	ble 9$			;no space
-18$:	jsr pc,stypec		;type a space
-	sob a,18$		;to get a full underline
+	ble 7$			;no space
+6$:	jsr pc,stypec		;type a space
+	sob a,6$		;to get a full underline
 	rest b
 	dec b
 	clr a
 	tst strech		;are we echoing input?
-	beq 9$			;nope
+	beq 7$			;nope
 	jsr pc,@abspos		;put the cursor at the end of the good stuff
-9$:	jsr pc,@nundrl		;turn off underline
+7$:	jsr pc,@nundrl		;turn off underline
 	jsr pc,ttyfls
 	clr c
 	jsr pc,@setatr		;make sure the atributes are clear
@@ -2023,13 +2056,13 @@ c1tdel:	tyoesc #2		;send the delete line command
 	br c1idlp		;go pad it
 
 ;clear from the cursor to the end of the line
-c1clre:	tyoesc #23		;send the command
+c1clre:	tyoesc #25		;send the command
 c1clr1:	pad #16.		;infinite padding
 	rts pc
 
 ;kludegy special clear eol that gets number of chars being cleared in a
 ;and therefore can pad cleverly
-c1sclr:	tyoesc #23		;clear the line
+c1sclr:	tyoesc #25		;clear the line
 	ash #2,a		;divide the number of characters by 4
 	add #2,a
 	cmp #16.,a		;over the max?
@@ -2091,60 +2124,60 @@ c1seta:	save c
 ;printing characters (including accents). Overflowing of lines is
 ;not handled
 c1type:	cmp #15,c		;is it a carrige return?
-	beq 1$			;yup
+	beq 3$			;yup
 	cmp #12,c		;linefeed?
-	beq 2$
+	beq 4$
 	cmp #7,c		;bell?
-	beq 4$			;just type it
+	beq 1$			;just type it
 	inc carpos		;move one character pos
 	cmp numcar,carpos	;got to be off the screen?
-	bhi 4$			;nope
+	bhi 1$			;nope
 	clr carpos		;goes to zero
 	cmp rnmlin,rlinps	;on the last line?
-	beq 4$			;yes, don't inc
+	beq 1$			;yes, don't inc
 	inc linpos		;down one line
 	inc rlinps
 	tyoesc #'S		;page mode so we don't get screwed on last line
-	jsr pc,4$		;call the rest as a subroutine
+	jsr pc,1$		;call the rest as a subroutine
 	tyoesc #'s		;go out of page mode
 	rts pc
 
-4$:	bit #200,c		;special graphic (accent character)?
-	bne 3$			;yup
+1$:	bit #200,c		;special graphic (accent character)?
+	bne 5$			;yup
 	jsr pc,c1fnt0		;make sure we are in font zero
-5$:	jsr pc,.tyo		;nothing special, just output it
+2$:	jsr pc,.tyo		;nothing special, just output it
 	rts pc
 
-1$:	clr carpos		;return to zero
-	br 5$			;output the cr
+3$:	clr carpos		;return to zero
+	br 2$			;output the cr
 
-2$:	inc linpos		;down one line
+4$:	inc linpos		;down one line
 	inc rlinps
 	jsr pc,.tyo		;output the lf
 	rts pc
 
-3$:	save c
+5$:	save c
 	cmpb #300,c		;in the accent range?
-	blos 31$		;nope, some special
+	blos 8$		;nope, some special
 	bic #177600,c		;flush special bit
-30$:	jsr pc,c1fnt1		;make sure we are in font 1
-34$:	tyo40 c			;and type it normally
+6$:	jsr pc,c1fnt1		;make sure we are in font 1
+7$:	tyo40 c			;and type it normally
 	inc carpos
 	rest c
 	rts pc
 
-31$:	bne 33$			;if z is set, fixed space
+8$:	bne 9$			;if z is set, fixed space
 	tst fixspp		;print fixed spaces?
-	bne 33$			;yup, print it special
+	bne 9$			;yup, print it special
 	clr c			;so we output a space
 	jsr pc,c1fnt0		;in font zero
-	br 34$
-33$:	cmpb #310,c		;better be less than this
-	bhi 32$
+	br 7$
+9$:	cmpb #310,c		;better be less than this
+	bhi 10$
 	bpt			;who trie dto type that???
-32$:	bic #177770,c		;one of 8 specials
+10$:	bic #177770,c		;one of 8 specials
 	movb c1spcc(c),c	;translate
-	br 30$			;go type it
+	br 6$			;go type it
 
 ;make sure the terminal is set to font 0
 c1fnt0:	tst c1fnt		;is it zero?
@@ -2448,12 +2481,12 @@ trpbrk:	rest <b,>		;get the pc
 	jsr pc,bell		;ring the bell
 	clr prompt		;flush any prompting
 	clr strech		;and don't echo the string anymore either
-	jsr pc,updatf
 	asl b
 	jmp @ertab(b)		;call the error routine
 
 erding:
-erbade:	jmp mloop		;and go back to main loop
+erbade:	jsr pc,updatf
+	jmp mloop		;and go back to main loop
 
 ;no room in buffer
 ernoro:	mov #bufful,erstat	;set an error into the status line
@@ -4028,7 +4061,27 @@ icreat:	jsr pc,gfile
 	jsr pc,delcur
 1$:	filerr
 
-
+.if nz lsi
+;Chain to a specified program
+fchain:	mov #maxstr,maxstl	;set up the max length
+	mov #-1,strtrc		;don't terminate on space
+	jsr pc,strge2		;gobble down string
+	tstb string		;test for non-null
+	bne 1$
+	badarg
+1$:	jsr pc,reseta		;reset the world
+	mov memtop,a		;top of memory
+	sub #1000,a		;random place
+	mov a,f			;for the new pdl pointer
+	tst -(f)
+	mov a,@memtop		;store pointer
+	mov #string,b		;file to boot
+2$:	movb (b)+,c
+	jsr pc,upcase
+	movb c,(a)+
+	bne 2$
+	jmp 173002		;go to the hardware boot
+.endc
 
 ;open a file for reading
 grfile:	mov #inname,defstr	;set the default
@@ -4956,86 +5009,86 @@ mmenu:	save <e,f>
 	clr b			;this is the menu item we've found that matches
 1$:	mov #string,c
 	tst (a)
-	beq 2$			;off the end of the menu
+	beq 14$			;off the end of the menu
 	add #menuoh,a		;go to the string part by adding in the overhead
 	cmp #menuti,menufl-menuoh(a)	;is this just a title line?
-	beq 7$			;yup, skip it
+	beq 6$			;yup, skip it
 	tst prtspc		;special?
-	beq 50$			;nope
-	blt 51$			;if < 0 do only insert commands
+	beq 4$			;nope
+	blt 2$			;if < 0 do only insert commands
 	bit #menuio,-menuoh(a)	;is it insert only?
-	bne 7$			;yup, ignore
-	br 50$
-51$:	tst menuir-menuoh(a)	;is there a an insert routine?
-52$:	beq 7$			;nope, skip it
-50$:	save a
-3$:	movb (a)+,e		;get a character
+	bne 6$			;yup, ignore
+	br 4$
+2$:	tst menuir-menuoh(a)	;is there a an insert routine?
+3$:	beq 6$			;nope, skip it
+4$:	save a
+5$:	movb (a)+,e		;get a character
 	movb (c)+,f		;get one from the user's string
-	beq 4$			;end of user's string
+	beq 7$			;end of user's string
 	sub e,f			;difference
-	beq 3$			;equal so far
+	beq 5$			;equal so far
 	cmp #40,f		;difference only in case?
-	beq 3$			;yup
+	beq 5$			;yup
 	cmp #-40,f		;this way too...
-	beq 3$
+	beq 5$
 	rest a			;get back pointer to start
-7$:	tstb (a)+		;find the end of the item
-	bne 7$
+6$:	tstb (a)+		;find the end of the item
+	bne 6$
 	inc a			;do a .even
 	bic #1,a
 	br 1$			;try for another
 
 
-4$:	tst e			;end of menu string too?
-	beq 5$			;perfect match
+7$:	tst e			;end of menu string too?
+	beq 13$			;perfect match
 	tst b			;have we already found one thing that matches?
-	beq 5$			;nope
+	beq 13$			;nope
 	sub #string+1,c		;giving number of matched characters
 	dec a			;undo the ()+
 	add b,c			;getting pointer into first matched thing at end of match
-6$:	cmpb (c)+,(a)+		;do the two menu items match?
-	bne 8$			;no, ambigious so far
+8$:	cmpb (c)+,(a)+		;do the two menu items match?
+	bne 10$			;no, ambigious so far
 	cmpb #40,-1(a)		;space?
 	beq 9$			;yes, matched to space
 	tstb -1(a)		;zero would be good too
-	bne 6$			;keep looking
+	bne 8$			;keep looking
 9$:	mov c,menueq		;only go this far in the completion
 	tst (p)+		;flush saved thing
-	br 7$
+	br 6$
 
-8$:	tst (p)+		;flush saved thing
-18$:	rest <f,e>
+10$:	tst (p)+		;flush saved thing
+11$:	rest <f,e>
 	sez
 	sec
 	rts pc
 
-10$:	rest <f,e>
+12$:	rest <f,e>
 	sez
 	rts pc			;return ambigous
 
-5$:	rest b			;pop the found thing
-	br 7$
+13$:	rest b			;pop the found thing
+	br 6$
 
 ;here we have found a match which is at least partly unambigous
 ;or else no match at all
-2$:	tst b			;any match?
-	beq 18$			;nope
+14$:	tst b			;any match?
+	beq 11$			;nope
 	mov b,f
 	mov #string,d
-20$:	movb (b)+,(d)+		;move the matched thing into the string
-	beq 21$			;end of thing
+15$:	movb (b)+,(d)+		;move the matched thing into the string
+	beq 16$			;end of thing
 	cmp b,menueq		;end of valid match?
-	bne 20$
+	bne 15$
 	clrb (d)+
-	br 10$			;go get the rest
+	br 12$			;go get the rest
 
-21$:	mov f,prompt		;this becomes the prompt
+16$:	mov f,prompt		;this becomes the prompt
 	sub #menuoh,f
 	mov f,a			;copy it
 	tst prtspc		;special?
-	bge 55$			;regular or direct
+	bge 17$			;regular or direct
 	add #menuir-menudp,a
-55$:	mov menudp(a),a		;the dispatch address
+17$:	mov menudp(a),a		;the dispatch address
 	rest <,e>
 	clz
 	rts pc
@@ -5057,49 +5110,49 @@ tmenu:	save <a,c,b>
 	jsr pc,@clreol		;clear the top line
 	mov menusv,b		;recover pointer to text
 1$:	tst (b)			;at the end?
-	beq 2$			;off the end of the menu
+	beq 12$			;off the end of the menu
 	mov b,a			;save pointer to menu item
 	add #menuoh,b		;skip menu item header
 	cmp #menuti,(a)		;title?
-	bne 53$			;nope
+	bne 2$			;nope
 	jsr pc,.crlf		;return the carrige
-	br 4$			;and print it
-53$:	tst prtspc		;special?
-	beq 50$			;nope
-	blt 51$			;if < 0 do only insert commands
+	br 8$			;and print it
+2$:	tst prtspc		;special?
+	beq 5$			;nope
+	blt 3$			;if < 0 do only insert commands
 	bit #menuio,(a)		;is it insert only?
-	beq 50$			;nope, print it
-	br 7$			;yes, ignore it
-51$:	tst menuir(a)		;is there a an insert routine?
-52$:	beq 7$			;nope, skip it
-50$:	cmp #35.,carpos		;is the cursor at < 35?
-	blo 54$			;nope
+	beq 5$			;nope, print it
+	br 11$			;yes, ignore it
+3$:	tst menuir(a)		;is there a an insert routine?
+4$:	beq 11$			;nope, skip it
+5$:	cmp #35.,carpos		;is the cursor at < 35?
+	blo 6$			;nope
 	save <a,b>
 	mov linpos,a		;the line we are on
 	mov #37.,b		;chara to go to
 	jsr pc,babsps
 	rest <b,a>
-	br 55$
-54$:	jsr pc,.crlf
-55$:	jsr pc,.space
+	br 7$
+6$:	jsr pc,.crlf
+7$:	jsr pc,.space
 	jsr pc,.space
-4$:	jsr pc,htype
+8$:	jsr pc,htype
 	tst menuvp(a)		;is there a variable print routine?
-	beq 3$			;nope
+	beq 9$			;nope
 	jsr pc,.space		;type a space
 	jsr f,acsav
 	jsr pc,@menuvp(a)	;go print the variable
 	jsr f,acres
-3$:	cmp #menuti,(a)		;was it a title?
-	bne 56$			;nope
+9$:	cmp #menuti,(a)		;was it a title?
+	bne 10$			;nope
 	mov #40.,carpos		;kludge to force cr
-56$:	dec b			;go back to the zero
-7$:	tstb (b)+
-	bne 7$			;find the end of the string
+10$:	dec b			;go back to the zero
+11$:	tstb (b)+
+	bne 11$			;find the end of the string
 	inc b			;do a .even
 	bic #1,b
 	br 1$			;and type the next menu item
-2$:	jsr pc,scrfls		;clobber the whole screen
+12$:	jsr pc,scrfls		;clobber the whole screen
 	jsr pc,@eosclr		;clear to the end of the screen
 	jsr pc,ttyfls		;make sure the screen gets updated
 	rest <b,c,a>
@@ -5117,30 +5170,30 @@ htype:	movb (b)+,c
 ;clobbers the screen image to indicate we don't know what's there
 htyo:	save a
 	tst carpos		;are we at pos zero?
-	bne 2$			;nope
+	bne 1$			;nope
 	jsr pc,@clreol		;clear out the lien before typing on it
-2$:	cmp #15,c		;carrige return?
-	beq 8$
+1$:	cmp #15,c		;carrige return?
+	beq 4$
 	cmp #12,c		;linefeed?
-	beq 9$			;ignore
+	beq 3$			;ignore
 	mov carpos,a		;current character positon
 	add #2,a		;this will be the new one, leave room for !
 	cmp a,numcar		;fit on the line?
-	bne 1$			;yup
+	bne 2$			;yup
 	save c
 	mov #rgtchr,c		;mark the continuation
 	jsr pc,@typec		;call typec directly to avoid a loop
 	mov #15,c		;return the carriage
 	jsr pc,@typec
 	rest c
-1$:	jsr pc,@typec		;type the character
-9$:	rest a
+2$:	jsr pc,@typec		;type the character
+3$:	rest a
 	rts pc
 
-8$:	jsr pc,@typec		;type the cr
+4$:	jsr pc,@typec		;type the cr
 	mov #12,c
 	jsr pc,@typec		;type a lf
-	br 9$			;done
+	br 3$			;done
 
 ;get a string into the array "string". If the user pauses more than f/60 seconds call
 ;the routine in e. Return with an asciz string in string, terminating character in a
@@ -5152,61 +5205,61 @@ strge2:	save d
 	mov d,strech		;so it will be echoed
 strge1:	jsr pc,dstat		;always display status
 	save <c,b,f>		;save the other registers
-2$:	mov (p),f		;recover possibly clobbered f
+1$:	mov (p),f		;recover possibly clobbered f
 	jsr pc,ptyip		;character?
-	beq 1$			;nope
-5$:	jsr pc,getkey		;get a key
+	beq 12$			;nope
+2$:	jsr pc,getkey		;get a key
 	jsr pc,getnam		;get it's name
 	cmp strtrc,a		;space?
-	beq 3$			;that's a terminator
+	beq 7$			;that's a terminator
 	cmp #chrnrm,f		;just normal character?
-	beq 20$			;yup
+	beq 3$			;yup
 	cmp #chrfsw,f		;accents are normal too
-	bne 4$			;nope
-20$:	sub #string,d		;get the character count
+	bne 6$			;nope
+3$:	sub #string,d		;get the character count
 	cmp maxstl,d		;is it more than the max allowed?
-	bhi 13$			;nope
+	bhi 4$			;nope
 	add #string,d		;fix it
 	jsr pc,bell		;ring the bell
-	br 2$			;and loop back
-13$:	add #string,d
+	br 1$			;and loop back
+4$:	add #string,d
 	movb a,(d)+		;save in the string
 	clrb (d)		;terminate string
-7$:	jsr pc,tyip		;another already?
-	bne 5$			;yup
+5$:	jsr pc,tyip		;another already?
+	bne 2$			;yup
 	jsr pc,dstat		;nope, update status
-	br 2$
+	br 1$
 
-4$:	cmp #chrdel,f		;rubout?
-	beq 6$			;yup
-	cmp #chrqui,f		;quit character
+6$:	cmp #chrdel,f		;rubout?
 	beq 10$			;yup
-3$:	tstb string		;anything typed?
-	bne 11$			;yup
+	cmp #chrqui,f		;quit character
+	beq 11$			;yup
+7$:	tstb string		;anything typed?
+	bne 9$			;yup
 	mov defstr,b		;get the default string
-	beq 11$			;none
+	beq 9$			;none
 	mov #string,c
-12$:	movb (b)+,(c)+		;move the default string in
-	bne 12$
+8$:	movb (b)+,(c)+		;move the default string in
+	bne 8$
 	jsr pc,dstat		;get the string displayed
-11$:	clr defstr		;flush any old default string
+9$:	clr defstr		;flush any old default string
 	clr strech		;don't redisplay on next status update
 	rest <f,b,c,d>
 	rts pc
 
-6$:	cmp #string,d		;at beggining?
-	beq 2$			;do nothing
+10$:	cmp #string,d		;at beggining?
+	beq 1$			;do nothing
 	clrb -(d)		;flush last character
-	br 7$			;redisplay
+	br 5$			;redisplay
 
-10$:	jsr pc,@quitrt		;call the quit routine, whatever it is
+11$:	jsr pc,@quitrt		;call the quit routine, whatever it is
 ;if it return just fall through to ignore the quit
 
-1$:	tst e			;prompt routine?
-	beq 2$			;nope
+12$:	tst e			;prompt routine?
+	beq 1$			;nope
 	jsr pc,(e)		;call it
 	clr e			;but not twice
-	br 2$
+	br 1$
 
 ;continue a string get that was broken
 strgec:	save d
@@ -5657,7 +5710,7 @@ prdn1:	jsr pc,prn
 
 ;Print a file
 filprt:	jsr pc,setfls		;set a file as the source
-	br jusprt
+	br plnprt
 
 chrvpr:	jsr pc,setbfs		;set up buffer as source of lines
 ;fall into the plain print routine, which just prints the lines on the printer
@@ -5825,15 +5878,20 @@ getfll:	save a
 	inc prslnc		;and include it in the count
 	cmp b,#-prfbfl		;did we get exactly nothing?
 	bne 1$			;no, got somthing
-	mov prfcap,a
-	jsr pc,deldcp		;delete cap
-	clr prfcap
+	jsr pc,flsprf		;delete prfcap
 	rest a
 	sec
 	rts pc			;signal eof
 
 6$:	mov #prfbuf+prfbfl,prslnc	;got a whole buffer
 	br 1$
+
+;Delete the printer file cap
+flsprf:	mov prfcap,a
+	beq 1$
+	jsr pc,deldcp		;delete cap
+	clr prfcap
+1$:	rts pc
 
 ;get the next character from the line and return it in c
 ;uses b as a pointer and d as a count; if the count is zero, get a new line
@@ -6371,22 +6429,22 @@ prtrev:	save c
 ;output the character in c to the printer, keeping track of the resulting position
 ;this routine is only for printing characters and cr
 prcout:	bit #200,c		;accent character?
-	bne 2$			;yup, special
+	bne 7$			;yup, special
 	jsr pc,prout		;put it into the buffer
 	bhis 1$			;room left?
 	jsr pc,prbfls		;flush out the buffer
 1$:	cmp #15,c		;cr?
-	beq 10$			;yes, special
+	beq 4$			;yes, special
 	cmp #10,c		;backspace?
-	beq 11$			;special
+	beq 6$			;special
 	cmp #12,c		;linefeed?
-	beq 13$
+	beq 5$
 	add prhinc,prhpos	;indicate the carrige movement
-4$:	bge 5$			;make sure we didn't jam against the edge
+2$:	bge 3$			;make sure we didn't jam against the edge
 	clr prhpos		;yes, jsut set to zero
-5$:	rts pc
+3$:	rts pc
 
-10$:	bpt			;nobody should ever cr the printer
+4$:	bpt			;nobody should ever cr the printer
 ;	mov prrlfm,prhpos	;the carriage moves to the left margin
 ;	save c
 ;	mov #12,c		;do a linefeed
@@ -6394,45 +6452,45 @@ prcout:	bit #200,c		;accent character?
 ;	rest c
 ;	rts pc
 
-13$:	bpt			;nobody should ever lf it either
+5$:	bpt			;nobody should ever lf it either
 ;	add prvinc,prvpos	;indicate the vertical movement
 ;	rts pc
 
-11$:	sub prhinc,prhpos
-	br 4$
+6$:	sub prhinc,prhpos
+	br 2$
 
-2$:	save c
+7$:	save c
 	cmpb #300,c		;up in the special range?
-	blos 21$		;yup
+	blos 10$		;yup
 	bic #177740,c		;flush extra bits, including upper/lower ness
 	asl c			;get a word index
 	add #fnteng,c		;english font table
 	tst prfrfm		;french print wheel?
-	beq 25$			;nope
+	beq 8$			;nope
 	add #fntfr-fnteng,c	;yup, french
-25$:	mov (c),c		;get the character(s) to print
-	beq 3$			;none
-27$:	jsr pc,prcout		;output the first one
+8$:	mov (c),c		;get the character(s) to print
+	beq 13$			;none
+9$:	jsr pc,prcout		;output the first one
 	swab c			;get the second one
 	bic #177400,c
-	beq 3$			;none
+	beq 13$			;none
 	save c			;save it
 	mov #10,c		;do a backspace
 	jsr pc,prcout
 	rest c
-	br 22$
+	br 12$
 
-21$:	beq 23$			;fixed space
+10$:	beq 14$			;fixed space
 	cmp #cmdchr,c		;is it the magic commadn character?
-	bne 26$			;nope
+	bne 11$			;nope
 	mov #"OX,c		;print it as O overstrike X
-	br 27$
-26$:	mov #'?,c
-22$:	jsr pc,prcout
-3$:	rest c			;sometime we should fix these
+	br 9$
+11$:	mov #'?,c
+12$:	jsr pc,prcout
+13$:	rest c			;sometime we should fix these
 	rts pc
-23$:	movb #40,c		;regular space
-	br 22$
+14$:	movb #40,c		;regular space
+	br 12$
 
 
 ;put the character in c into the printer buffer
