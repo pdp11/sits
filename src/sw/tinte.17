@@ -156,6 +156,7 @@ ran:	0			;if non-zero we have ben started once
 ctrl=200			;control bit
 meta=400			;meta bit
 ctmtbt:	0			;meta and control bits
+cmlock:	0			;meta and control lock bits
 lastch:	0			;last (currently being processed) character typed in
 rescan:	0			;character to be re-read
 tyisav:	0			;for RT11, the character input by the last tyip
@@ -206,6 +207,8 @@ ubufep:	0			;used by update, pointer to the first non-ex line
 statln:	.blkb 128.		;image of status line
 dstcar:	0			;temp used by dstat
 pchr:	0			;either htyo or stypec
+
+maxcmd=30.			;maximum number of control-commands in cmd line "minibuffer"
 
 defstr:	0			;pointer to the string to use if zero-length string given
 maxstr=60.
@@ -405,6 +408,10 @@ foo=menuex
 .endm
 
 bits:	.asciz &BITS&		;for finding the bit table
+
+comlnp:
+eng <	.asciz &Control commands:&>
+fr  <	.asciz &Commandes controlles:&>
 
 filep:
 eng <	.asciz &File:&>		;file prompt
@@ -616,7 +623,7 @@ prompt:	0			;prompting for file, menu, etc.
 strech:	0			;string being input
 prstat:	0			;printer status (for background printer)
 statae:				;end of whatever you like
-greet:	.asciz /Pro Plus V0/	;boy, is this EVER version 0!!!
+greet:	.asciz /TINTE V0/	;boy, is this EVER version 0!!!
 eng <slmes:	.asciz /SL/>		;shift locked
 fr  <slmes:	.asciz /MAJ/>
 ;variables for tabs
@@ -2411,7 +2418,7 @@ c1fnt1:	cmp #1,c1fnt		;is it one?
 ;set the cursor to the address in a,b
 25absp:	cmp rlinps,a		;right line?
 	beq 4$			
-	blo 31$
+	bhi 31$
 3$:	tyo #12			;no, too high, go down til we get to it.
 	inc rlinps
 	cmp rlinps,a
@@ -2688,20 +2695,23 @@ tyip:	tst tyisav		;already got one?
 
 
 .sbttl main loop and character dispatch
-mloop:	clr ctmtbt		;clear the control and meta bits
+main:	clr ctmtbt		;clear the control and meta bits
 	mov #1,repcnt		;set the repeat count
 	mov #char,noun		;we are hacking characters
 	mov #chrqui,quitrt	;normal quit routinte
-1$:	jsr pc,cdisp		;read a character and dispatch on it
+main1:	jsr pc,cdisp		;read a character and dispatch on it
 	tst lastch		;did the last thing set an argument or prefix?
-	beq 2$			;yup
+	beq 1$			;yup
 	jsr pc,repkey		;if the repeat count is set...
-2$:	jsr pc,update		;update the screen if no characters waiting
+1$:	jsr pc,update		;update the screen if no characters waiting
 	jsr pc,ttyfls		;make sure all the characters are out there
-	tst lastch		;should we clear stuff? (special use of lastch, see chrmta)
-	beq 1$			;nope
-	br mloop
+	rts pc
 
+mloop:	jsr pc,main
+1$:	tst lastch		;should we clear stuff? (special use of lastch, see chrmta)
+	bne mloop		;nope
+	jsr pc,main1
+	br 1$
 
 
 ;dispatch on a input character
@@ -2729,6 +2739,7 @@ getkey:	save f
 	clr ctmtbt		;clear old control and meta
 1$:	jsr pc,schtyi		;read a character, maybe running print job if none available
 	bis ctmtbt,a		;set any control and meta bits
+	bis cmlock,a		;(also have control/meta-lock mode)
 	jsr pc,getnam		;get it's "name", the dispatch address
 	cmp #chrctl,f		;does it set control?
 	beq 2$			;yup, set it
@@ -3038,7 +3049,8 @@ foo=foo+1
 	dkcm 0,chrctl		;aux
 	dk 177,chrdel		;rubout
 	dk 'D-100,chrdlf	;delete forward
-	dkc 'd			;delete forward
+	dkc 'd,chrdlf		;delete forward
+	dkc 'D,chrdlf
 	dk 11,chrtab		;tab key
 	dk 7,chrqui		;stop
 	dkc 'g			;stop
@@ -3080,6 +3092,19 @@ foo=foo+1
 	dkc 'S,chrsse		;sentence
 	dkm 'n,chrno		;no
 	dkm 'y,chryes		;yes
+
+	dk 'C-100,ctlock	;control-lock toggle
+	dkc 'c,ctlock
+	dkc 'C,ctlock
+	dk 'X-100,comlin	;minibuffer-style command line
+	dkc 'x,comlin
+	dkc 'X,comlin
+	dk 'A-100,chrarg	;numeric arg
+	dkc 'a,chrarg
+	dkc 'A,chrarg
+	dk 'U-100,chrml4	;numeric arg * 4
+	dkc 'u,chrml4
+	dkc 'U,chrml4
 
 .endc	;df pass2
 .=crctbe
@@ -3670,6 +3695,45 @@ chrbtb:	jsr pc,tabsoc		;get the current display pos
 	mov c,d			;the position we want
 	jsr pc,getchp		;convert to character pos
 	br tabfnd
+
+;Toggle the control-lock
+ctlock:	bit #ctrl,cmlock	;set?
+	bne 1$
+	bis #ctrl,cmlock	;no, set it
+	br 2$
+1$:	bic #ctrl,cmlock	;yes, clear it
+2$:	clr lastch
+	rts pc
+
+;Minibuffer-style command input.
+;Inputs a string of characters from the user, then controllifies them
+;and executes them as commands.
+comlin:	mov #comlnp,prompt	;command line prompt
+	clr string		;start with fresh string
+	clr defstr		;no default string
+	mov #maxcmd,maxstl	;max command string length
+	mov #40,strtrc		;terminate on space
+	jsr pc,strgec		;gobble down string
+
+	save <a,cmlock>
+	mov #string,a		;got the string, now execute it
+	save a
+1$:	rest a
+	movb (a)+,rescan
+	beq 2$
+	bic #-200,rescan
+	save a
+	mov #ctrl,cmlock	;temporary control-lock mode
+	tst lastch
+	beq 11$
+	jsr pc,main
+	br 1$
+11$:	jsr pc,main1
+	br 1$
+
+2$:	rest <cmlock,a>
+	clr prompt
+	rts pc
 
 ;reverse search
 chrrse:	mov #rsercp,prompt	;put up the prompt
