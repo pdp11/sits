@@ -18,11 +18,20 @@ VERSIO==%FNAM2	;SAVE VERSION NO.
 ; Modified 2/29/76 by EAK to change ERROR, ERRSET, and
 ;	ERR and to add BOUNDP, REMOB, REVERSE and NREVERSE.
 
+; Define symbols for various operating systems LISP11 can run under
+SITS==1
+TRANTR==2
+
+.IIF NDF  TS,	TS==SITS	; DEFAULT SYSTEM IS SITS
 
 .IIF NDF  TOP,	TOP==100000	; ASSUME 16K
-.IIF NDF  TS,	TS==1		; DEFAULT IS NON SITS
 
-.IIF NE  TS,	.INSRT SITS;SITSS SYMS
+.IIF EQ  TS-SITS,	PDP11==45
+.IIF EQ  TS-TRANTR,	PDP11==10
+.IIF EQ  TS,		PDP11==10
+
+.IIF EQ  TS-SITS,	.INSRT SITS;SITSS SYMS
+
 
 R0=%0
 R1=%1
@@ -54,10 +63,6 @@ SRB==175622
 SXS==175624
 SXB==175626
 
-	.=60		;TTY KEYBOARD TRAP VECTOR.
-	TKINT,200
-	.=310		;SUPERBEE TRAP VECTOR
-	SXINT,200
 .ENDC
 
 ;TOP OF STACK.
@@ -120,27 +125,15 @@ TRPTAB:	EVALA,ALLOC,ERRORA,ASSQA,INRAN1,GETNUM
 	  .endm
 	.endm pop
 
-.IF EQ  TS
+.IF EQ  PDP11-10
 ; SOB macro expands into code which performs identically to
 ; the SOB instruction found on more powerfull 11 processors
 .macro	sob r,addr
-	dec	r
-	bne	addr
+	dec r
+	bne addr
 	.endm sob
 
-
-; SPL macro changes the the priority to its argument. It
-; (unfortunately) does this with a MOV, thus clobbering
-; the condition codes and such.
-.macro	spl n
-	.if ne  n
-	movb	#n*40,@#ps
-	.iff
-	clrb	@#ps
-	.endc
-	.endm spl
-
-.ENDC	;IF EQ  TS
+.ENDC
 
 .SBTTL	FORMATS
 
@@ -184,24 +177,29 @@ TRPTAB:	EVALA,ALLOC,ERRORA,ASSQA,INRAN1,GETNUM
 ;ENTRY POINT TO LISP.
 BEG:	MOV	#TOPSTK,SP
 	MOV	#TOPSTK,ERRSTK
+.IF EQ TS-SITS
+	JSR PC,TSINIT		; SO MANY CROCKS, DON'T WANT THEM HERE
+.ENDC
+.IF EQ TS
+	RESET
+	MOV #TKINT,@#60		; SETUP TTY INTERRUPT VECTOR
+	MOV #200,@#62
+	MOV #SXINT,@#320	; SETUP SB INTERRUPT VECTOR
+	MOV #200,@#322
+	MOV #100,@#TKS		; SET UP TTY INPUT INTS.
+	MOV #100,@#SRS
+.ENDC
 	CLR	PROGPC		; NO PROG FORMS
 	CLR	ERRFLG
 	CLR	ALIST
 	JSR	PC,GC		; GARBAGE COLLECT LIST SPACE
-.IIF NZ TS,JSR PC,TSINIT	; SO MANY CROCKS, DON'T WANT THEM HERE
 
 
 ;ERROR AT TOP LEVEL COMES HERE. THE STUFF ABOVE
 ;THE TOP OF THE STACK APPEARS AS IF IT HAD BEEN SAVED BY
 ;AN ERRSET CALLED FROM TOPERR-2. WHEN NOT INSIDE AN ERRSET,
 ;ERROR WILL THINK IT'S INSIDE THAT PSEUDO-ERRSET.
-TOPERR:
-.IF Z TS
-	RESET
-	MOV	#100,@#TKS	;SET UP TTY INPUT INTS.
-	MOV	#100,@#SRS
-.ENDC
-	MOV	#TOPSTK,SP
+TOPERR:	MOV	#TOPSTK,SP
 
 ;TOP LEVEL LOOP.
 TLOOP:	MOV	#.P,$PLUS	; SET + TO +
@@ -515,9 +513,12 @@ SFT3L:	CLR	R4
 
 ;SUBR -- OUTPUT CRLF.
 TERPRI:
-.IIF E TS,	TYPEST	^"
+.if eq  ts-sits
+	TYPEST	^"î"
+.iff
+	typest ^"
 "
-.IIF NE TS,	TYPEST ^"î"
+.endc
 	RTS	PC
 
 RUBPRT:	CLR	OUTTYP
@@ -1828,8 +1829,10 @@ RDCHR:	MOV	NXTCHR,R4	;IF CHAR TO RE-READ,
 	JSR	PC,TYPEC	;ECHO.
 	CMP	R4,#15		;CR ==> REPLACE BY LF AND ECHO
 	BNE	RDRTN
+.if ne  ts-sits
 	MOV	#12,R4
-.IIF E TS,	JSR	PC,TYPEC
+	JSR	PC,TYPEC
+.endc
 RDRTN:	MOV	R4,THSCHR	; SET CURRENT CHAR
 	CLR	NXTCHR		; NOTHING TO REREAD YET
 	RTS	PC
@@ -1860,7 +1863,7 @@ TKIN1:	INC	TKINTO
 	BEQ	TKINTX		;IF PRECEDING CHAR WAS "/".
 	CMP	R1,#7		;^G?
 	BNE	1$
-	SPL	0		;RESTORE LOW PRIORITY
+	CLR	@#PS		;RESTORE LOW PRIORITY
 	TRAP	.ERROR		;GIVE ERROR TO STOP WHATS DOING
 	20
 1$:	CMP	R1,#'/
@@ -2129,7 +2132,7 @@ ERRT:	.WORD	1$
 	.subr	numberp
 	.atom	oblist,oblist:0,obpcel:
 	.fsubr	or
-	.subr	plist
+	.subr	plist
 	.fsubr	plus
 	.subr	plusp
 	.subr	pnget
@@ -2175,4 +2178,3 @@ ERRT:	.WORD	1$
 %GO==BEG	;SIMULATOR START ADDRESS
 
 	.END BEG
-
