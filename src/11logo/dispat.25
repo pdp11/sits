@@ -1,0 +1,537 @@
+
+	.STITLE	DISPATCH TABLE (ENGLISH)
+;FLAGS--
+;FSF -- SPECIAL ON INPUT
+;FOF -- SPECIAL ON OUTPUT
+;FQF -- QUOTING CHARACTER
+;SEPF -- SEPARATOR CHARACTER
+;NNUMF -- NOT A NUMBER
+;OPERF -- OPERATOR
+
+	;FLAGS--BYTE ONE		NUMBER--BYTE TWO
+;	FSF FOF FQF SEPF NNUMF OPERF	#
+;^@	.   .   .   .    NNUMF .    	.
+;^A	.   .   .   .    NNUMF .    	.
+;^B	.   FOF .   .    NNUMF .    	0
+;^C	FSF .   .   .    NNUMF .    	0
+;^D	FSF .   .   .    NNUMF .    	2
+;^E	.   .   .   .    NNUMF .    	.
+;^F	.   .   .   .    NNUMF .    	.
+;^G	FSF FOF .   .    NNUMF .    	4
+;^H	.   FOF .   .    NNUMF .    	2
+;^I	.   FOF .   SEPF NNUMF .    	10
+;^J	.   FOF .   SEPF NNUMF .    	12
+;^K	.   FOF .   SEPF NNUMF .    	14
+;^L	.   FOF .   SEPF NNUMF .    	16
+;^M	FSF FOF .   SEPF NNUMF .    	6
+;^N	FSF .   .   .    NNUMF .    	10
+;^O	.   .   .   .    NNUMF .    	.
+;^P	.   .   .   .    NNUMF .    	.
+;^Q	FSF .   .   .    NNUMF .    	12
+;^R	FSF .   .   .    NNUMF .    	14
+;^S	FSF .   .   .    NNUMF .    	16
+;^T	.   .   .   .    NNUMF .    	.
+;^U	.   .   .   .    NNUMF .    	.
+;^V	.   .   .   .    NNUMF .    	.
+;^W	FSF .   .   .    NNUMF .    	20
+;^X	FSF .   .   .    NNUMF .    	22
+;^Y	FSF .   .   .    NNUMF .    	24
+;^Z	FSF .   .   .    NNUMF .    	26
+;^[	.   .   .   .    NNUMF .    	.
+;^\	.   .   .   .    NNUMF .    	.
+;^]	.   .   .   .    NNUMF .    	.
+;^^	.   .   .   .    NNUMF .    	.
+;^_	.   .   .   .    NNUMF .    	.
+;SP	.   .   .   SEPF NNUMF .    	.
+;!	.   .   .   .    NNUMF .    	.
+;"	.   .   FQF SEPF NNUMF .    	0
+;#	.   .   .   SEPF NNUMF OPERF	HAS$
+;$	.   .   .   .    NNUMF .    	.
+;%	.   .   .   .    NNUMF .    	.
+;&	.   .   .   .    NNUMF .    	.
+;'	.   .   FQF SEPF NNUMF .    	2
+;(	.   .   .   SEPF NNUMF OPERF	LP$
+;)	.   .   .   SEPF NNUMF OPERF	RP$
+;*	.   .   .   SEPF NNUMF OPERF	PRD$
+;+	.   .   .   SEPF NNUMF OPERF	PLU$
+;,	.   .   .   .    NNUMF .    	.
+;-	.   .   .   SEPF NNUMF OPERF	MIN$
+;.	.   .   .   .    NNUMF .    	.
+;/	.   .   .   SEPF NNUMF OPERF	DIV$
+;0	.   .   .   .    .     .    	.
+;1	.   .   .   .    .     .    	.
+;2	.   .   .   .    .     .    	.
+;3	.   .   .   .    .     .    	.
+;4	.   .   .   .    .     .    	.
+;5	.   .   .   .    .     .    	.
+;6	.   .   .   .    .     .    	.
+;7	.   .   .   .    .     .    	.
+;8.	.   .   .   .    .     .    	.
+;9.	.   .   .   .    .     .    	.
+;:	.   .   .   SEPF NNUMF OPERF	DOTS$
+;;	.   .   .   SEPF NNUMF .    	.
+;<	.   .   .   SEPF NNUMF OPERF	LSS$
+;=	.   .   .   SEPF NNUMF OPERF	EQL$
+;>	.   .   .   SEPF NNUMF OPERF	GTR$
+;?	.   .   .   .    NNUMF .    	.
+;@	.   .   .   .    NNUMF .    	.
+;A	.   .   .   .    NNUMF .    	.
+;B	.   .   .   .    NNUMF .    	.
+;C	.   .   .   .    NNUMF .    	.
+;D	.   .   .   .    NNUMF .    	.
+;E	.   .   .   .    NNUMF .    	.
+;F	.   .   .   .    NNUMF .    	.
+;G	.   .   .   .    NNUMF .    	.
+;H	.   .   .   .    NNUMF .    	.
+;I	.   .   .   .    NNUMF .    	.
+;J	.   .   .   .    NNUMF .    	.
+;K	.   .   .   .    NNUMF .    	.
+;L	.   .   .   .    NNUMF .    	.
+;M	.   .   .   .    NNUMF .    	.
+;N	.   .   .   .    NNUMF .    	.
+;O	.   .   .   .    NNUMF .    	.
+;P	.   .   .   .    NNUMF .    	.
+;Q	.   .   .   .    NNUMF .    	.
+;R	.   .   .   .    NNUMF .    	.
+;S	.   .   .   .    NNUMF .    	.
+;T	.   .   .   .    NNUMF .    	.
+;U	.   .   .   .    NNUMF .    	.
+;V	.   .   .   .    NNUMF .    	.
+;W	.   .   .   .    NNUMF .    	.
+;X	.   .   .   .    NNUMF .    	.
+;Y	.   .   .   .    NNUMF .    	.
+;Z	.   .   .   .    NNUMF .    	.
+;[	.   .   FQF SEPF NNUMF .    	4
+;\	.   .   .   .    NNUMF .    	.
+;]	.   .   FQF SEPF NNUMF .    	6
+;^	.   .   .   SEPF NNUMF OPERF	BKSL$
+;_	.   .   .   SEPF NNUMF .    	.
+;`	.   .   .   .    NNUMF .    	.
+;a	.   .   .   .    NNUMF .    	.
+;b	.   .   .   .    NNUMF .    	.
+;c	.   .   .   .    NNUMF .    	.
+;d	.   .   .   .    NNUMF .    	.
+;e	.   .   .   .    NNUMF .    	.
+;f	.   .   .   .    NNUMF .    	.
+;g	.   .   .   .    NNUMF .    	.
+;h	.   .   .   .    NNUMF .    	.
+;i	.   .   .   .    NNUMF .    	.
+;j	.   .   .   .    NNUMF .    	.
+;k	.   .   .   .    NNUMF .    	.
+;l	.   .   .   .    NNUMF .    	.
+;m	.   .   .   .    NNUMF .    	.
+;n	.   .   .   .    NNUMF .    	.
+;o	.   .   .   .    NNUMF .    	.
+;p	.   .   .   .    NNUMF .    	.
+;q	.   .   .   .    NNUMF .    	.
+;r	.   .   .   .    NNUMF .    	.
+;s	.   .   .   .    NNUMF .    	.
+;t	.   .   .   .    NNUMF .    	.
+;u	.   .   .   .    NNUMF .    	.
+;v	.   .   .   .    NNUMF .    	.
+;w	.   .   .   .    NNUMF .    	.
+;x	.   .   .   .    NNUMF .    	.
+;y	.   .   .   .    NNUMF .    	.
+;z	.   .   .   .    NNUMF .    	.
+;{	.   .   .   .    NNUMF .    	.
+;|	.   .   .   .    NNUMF .    	.
+;}	.   .   .   .    NNUMF .    	.
+;~	.   .   .   .    NNUMF .    	.
+;RBO	FSF .   .   .    NNUMF .    	30
+
+	.STITLE SYSTEM DISPATCH TABLE (BYTE ONE)
+
+;FLAG DEFINITIONS
+FSF==200	;SPECIAL INPUT
+FOF==100	;SPECIAL OUTPUT
+FQF==40		;QUOTING
+SEPF==20	;SEPARATOR
+NNUMF==10	;NOT A NUMBER
+OPERF==4	;OPERATOR
+
+DTBL:
+.BYTE	NNUMF,NNUMF		;^@
+				;^A
+
+.BYTE	FOF!NNUMF,FSF!NNUMF	;^B	ECHOES AS BLANK
+				;^C	COPYS NEXT CHARACTER
+
+.BYTE	FSF!NNUMF,NNUMF		;^D	DELETES NEXT CHARACTER
+				;^E
+
+.BYTE	NNUMF,FSF!FOF!NNUMF	;^F
+				;^G	BREAK
+
+.BYTE	FOF!NNUMF,FOF!SEPF!NNUMF	;^H	BACKSPACE
+				;^I	TABULATE
+
+.BYTE	FOF!SEPF!NNUMF,FOF!SEPF!NNUMF	;^J	LINE FEED
+				;^K	TABULATE VERTICALLY
+
+.BYTE	FOF!SEPF!NNUMF,FSF!FOF!SEPF!NNUMF	;^L	FORM FEED
+				;^M	CARRIAGE RETURN	ECHOES AS CARRIAGE RETURN LINE FEED
+
+.BYTE	FSF!NNUMF,NNUMF		;^N	GET NEXT WORD
+				;^O
+
+.BYTE	NNUMF,FSF!NNUMF		;^P
+				;^Q	SUPER-QUOTE
+
+.BYTE	FSF!NNUMF,FSF!NNUMF	;^R	COPY REST OF LINE
+				;^S	SKIP NEXT WORD
+
+.BYTE	NNUMF,NNUMF		;^T
+				;^U
+
+.BYTE	NNUMF,FSF!NNUMF		;^V
+				;^W	ERASE LAST WORD
+
+.BYTE	FSF!NNUMF,FSF!NNUMF	;^X	CLARIFY INPUT
+				;^Y	EDIT PREVIOUS LINE
+
+.BYTE	FSF!NNUMF,NNUMF		;^Z	DESTROY INPUT BUFFER
+				;^[	MAYBE ALTMODE
+
+.BYTE	NNUMF,NNUMF		;^\
+				;^]
+
+.BYTE	NNUMF,NNUMF		;^^
+				;^_	WELL, ANY BETTER IDEAS FOR THEM?
+
+.BYTE	SEPF!NNUMF,NNUMF	;SP
+				;!	?????
+
+.BYTE	FQF!SEPF!NNUMF,SEPF!NNUMF!OPERF	;"
+				;#	ACTION OF
+
+.BYTE	NNUMF,NNUMF		;$
+				;%
+
+.BYTE	NNUMF,FQF!NNUMF!OPERF	;&
+				;'	(MAYBE LE)
+
+.BYTE	SEPF!NNUMF!OPERF,SEPF!NNUMF!OPERF	;(	ARITHMETIC GROUPING
+				;)	DITTO
+
+.BYTE	SEPF!NNUMF!OPERF,SEPF!NNUMF!OPERF	;*	MULTIPLY
+				;+	ADD
+
+.BYTE	NNUMF,SEPF!NNUMF!OPERF	;,
+				;-	SUBTRACT
+
+.BYTE	NNUMF,SEPF!NNUMF!OPERF	;.
+				;/	DIVIDE
+
+.BYTE	0,0			;0
+				;1
+
+.BYTE	0,0			;2
+				;3
+
+.BYTE	0,0			;4
+				;5
+
+.BYTE	0,0			;6
+				;7
+
+.BYTE	0,0			;8.
+				;9.
+
+.BYTE	SEPF!NNUMF!OPERF,SEPF!NNUMF	;:	THING OF
+				;;	PROPERTY OF
+
+.BYTE	SEPF!NNUMF!OPERF,SEPF!NNUMF!OPERF	;<
+				;=
+
+.BYTE	SEPF!NNUMF!OPERF,NNUMF	;>
+				;?
+
+.BYTE	NNUMF,NNUMF		;@
+				;A
+
+.BYTE	NNUMF,NNUMF		;B
+				;C
+
+.BYTE	NNUMF,NNUMF		;D
+				;E
+
+.BYTE	NNUMF,NNUMF		;F
+				;G
+
+.BYTE	NNUMF,NNUMF		;H
+				;I
+
+.BYTE	NNUMF,NNUMF		;J
+				;K
+
+.BYTE	NNUMF,NNUMF		;L
+				;M
+
+.BYTE	NNUMF,NNUMF		;N
+				;O
+
+.BYTE	NNUMF,NNUMF		;P
+				;Q
+
+.BYTE	NNUMF,NNUMF		;R
+				;S
+
+.BYTE	NNUMF,NNUMF		;T
+				;U
+
+.BYTE	NNUMF,NNUMF		;V
+				;W
+
+.BYTE	NNUMF,NNUMF		;X
+				;Y
+
+.BYTE	NNUMF,FQF!SEPF!NNUMF	;Z
+				;[
+
+.BYTE	NNUMF,FQF!SEPF!NNUMF	;\	LOGICAL OR
+				;]
+
+.BYTE	SEPF!NNUMF!OPERF,SEPF!NNUMF	;^	EXPONENTIATE, MAYBE
+				;_	MAKE
+
+.BYTE	NNUMF,NNUMF		;`	GRAVE ACCENT. LOOK THAT UP ON YOUR TELTERM.
+				;a	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;b	LOWER CASE
+				;c	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;d	LOWER CASE
+				;e	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;f	LOWER CASE
+				;g	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;h	LOWER CASE
+				;i	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;j	LOWER CASE
+				;k	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;l	LOWER CASE
+				;m	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;n	LOWER CASE
+				;o	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;p	LOWER CASE
+				;q	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;r	LOWER CASE
+				;s	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;t	LOWER CASE
+				;u	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;v	LOWER CASE
+				;w	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;x	LOWER CASE
+				;y	LOWER CASE
+
+.BYTE	NNUMF,NNUMF		;Z	LOWER CASE
+				;LEFT BRACE
+
+.BYTE	NNUMF,NNUMF		;VERTICAL BAR
+				;RIGHT BRACE
+
+.BYTE	NNUMF,FSF!NNUMF		;TILDE
+				;RUBOUT
+
+DTBL2:
+.BYTE	0,0		;^@
+			;^A
+
+.BYTE	0,0		;^B	ECHOES AS BLANK
+			;^C	COPYS NEXT CHARACTER
+
+.BYTE	2,0		;^D	DELETES NEXT CHARACTER
+			;^E
+
+.BYTE	0,4		;^F
+			;^G	BREAK
+
+.BYTE	2,10		;^H	BACKSPACE
+			;^I	TABULATE
+
+.BYTE	12,14		;^J	LINE FEED
+			;^K	TABULATE VERTICALLY
+
+.BYTE	16,6		;^L	FORM FEED
+			;^M	CARRIAGE RETURN	ECHOES AS CARRIAGE RETURN LINE FEED
+
+.BYTE	10,0		;^N	GET NEXT WORD
+			;^O
+
+.BYTE	0,12		;^P
+			;^Q	SUPER-QUOTE
+
+.BYTE	14,16		;^R
+			;^S	SKIP NEXT WORD
+
+.BYTE	0,0		;^T
+			;^U
+
+.BYTE	0,20		;^V
+			;^W	ERASE LAST WORD
+
+.BYTE	22,24		;^X	CLARIFY INPUT
+			;^Y
+
+.BYTE	26,0		;^Z	DESTROY INPUT BUFFER
+			;^[	MAYBE ALTMODE
+
+.BYTE	0,0		;^\
+			;^]
+
+.BYTE	0,0		;^^
+			;^_	WELL, ANY BETTER IDEAS FOR THEM?
+
+.BYTE	0,0		;SP
+			;!	?????
+
+.BYTE	0,HAS$		;"
+			;#	ACTION OF
+
+.BYTE	0,0		;$
+			;%
+
+.BYTE	0,2		;&
+			;'	(MAYBE LE)
+
+.BYTE	LP$,RP$		;(	ARITHMETIC GROUPING
+			;)	DITTO
+
+.BYTE	PRD$,PLU$	;*	MULTIPLY
+			;+	ADD
+
+.BYTE	0,MIN$		;,
+			;-	SUBTRACT
+
+.BYTE	0,DIV$		;.
+			;/	DIVIDE
+
+.BYTE	0,0		;0
+			;1
+
+.BYTE	0,0		;2
+			;3
+
+.BYTE	0,0		;4
+			;5
+
+.BYTE	0,0		;6
+			;7
+
+.BYTE	0,0		;8.
+			;9.
+
+.BYTE	DOTS$,0		;:	THING OF
+			;;	PROPERTY OF
+
+.BYTE	LSS$,EQL$	;<
+			;=
+
+.BYTE	GTR$,0		;>
+			;?
+
+.BYTE	0,0		;@
+			;A
+
+.BYTE	0,0		;B
+			;C
+
+.BYTE	0,0		;D
+			;E
+
+.BYTE	0,0		;F
+			;G
+
+.BYTE	0,0		;H
+			;I
+
+.BYTE	0,0		;J
+			;K
+
+.BYTE	0,0		;L
+			;M
+
+.BYTE	0,0		;N
+			;O
+
+.BYTE	0,0		;P
+			;Q
+
+.BYTE	0,0		;R
+			;S
+
+.BYTE	0,0		;T
+			;U
+
+.BYTE	0,0		;V
+			;W
+
+.BYTE	0,0		;X
+			;Y
+
+.BYTE	0,4		;Z
+			;[
+
+.BYTE	0,6		;\	LOGICAL OR
+			;]
+
+.BYTE	BKSL$,0		;^	TEMPORARILY MODULO (MAYBE EXPONENTIATE)
+			;_	MAKE
+
+.BYTE	0,0		;`	GRAVE ACCENT. LOOK THAT UP ON YOUR TELTERM.
+			;a	LOWER CASE
+
+.BYTE	0,0		;b	LOWER CASE
+			;c	LOWER CASE
+
+.BYTE	0,0		;d	LOWER CASE
+			;e	LOWER CASE
+
+.BYTE	0,0		;f	LOWER CASE
+			;g	LOWER CASE
+
+.BYTE	0,0		;h	LOWER CASE
+			;i	LOWER CASE
+
+.BYTE	0,0		;j	LOWER CASE
+			;k	LOWER CASE
+
+.BYTE	0,0		;l	LOWER CASE
+			;m	LOWER CASE
+
+.BYTE	0,0		;n	LOWER CASE
+			;o	LOWER CASE
+
+.BYTE	0,0		;p	LOWER CASE
+			;q	LOWER CASE
+
+.BYTE	0,0		;r	LOWER CASE
+			;s	LOWER CASE
+
+.BYTE	0,0		;t	LOWER CASE
+			;u	LOWER CASE
+
+.BYTE	0,0		;v	LOWER CASE
+			;w	LOWER CASE
+
+.BYTE	0,0		;x	LOWER CASE
+			;y	LOWER CASE
+
+.BYTE	0,0		;z	LOWER CASE
+			;{	OPEN BRACE
+
+.BYTE	0,0		;|	VERTICAL BAR, MAYBE OR, MAYBE XOR
+			;}	CLOSE BRACE
+
+.BYTE	0,30		;~	TILDE, LOGICAL NOT
+			;RBO	RUBOUT????
+
