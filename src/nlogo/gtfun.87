@@ -148,7 +148,8 @@ GTCLEA:	MOV #GTCS,B
 	JSR PC,GTOUT		;REALLY OUTPUT THE CLEAR
 	BIC #PENUF,DFLAGS	;SET PEN DOWN
 	CLR GTLEN		;THE DISPLAY LIST IS ZERO LENGTH
-	JMP GCLXYA		;CLEAR X Y AND ANGLE
+	JSR PC,GCLXYA		;CLEAR X Y AND ANGLE
+	JMP CHINIT		;INIT DLIST-CHANGE STUFF
 
 .IIF NDF WIPECL, WIPECL:
 GTWIPE:	MOV #GTSLEN,GTSNBT	;FLUSH ALL SNAPS
@@ -158,6 +159,40 @@ GTWIPE:	MOV #GTSLEN,GTSNBT	;FLUSH ALL SNAPS
 	CLR GTSNBT		;SNAP BOTTOM ALWAYS (RELATIVE) ZERO
 	MOV #GTMNDS-10.,GTDLTP	;TOP IS HERE (AND STAYS THERE!)
 1$:	BR GTSRT2		;AND RETURN
+
+;dpointer routines
+
+dpoint:	cmp gtdptr,#gtdtop	;out of dpointer index slots?
+	blos 1$
+	error+wta
+1$:	mov gtdptr,b
+	bis #gtdpoi,b		;send dpointer command to 2500
+	jsr pc,gtout
+	mov gtdptr,b		;inc dpointer index and return old index
+	inc gtdptr
+	jmp r1narg
+
+change:	mov s,f			;swap change's 2 args
+	mov (f),-(p)
+	mov 2(f),(f)
+	mov (p)+,2(f)
+	
+	jsr pc,g1narg		;1st arg is dlist pointer
+	cmp b,gtdptr
+	blo 2$
+	error+wta
+2$:	bis #gtchan,b
+	jsr pc,gtout		;send the change command to the 2500
+
+	jsr pc,run		;now run the sentence given by the 2nd arg
+
+	mov #gtendc,f		;send the endch command to the 2500
+	jsr pc,gtout
+	sez			;no deposit, no return
+	rts pc
+
+chinit:	clr gtdptr
+	rts pc
 
 SPIN:	MOV #GTSPIN,F
 GT11BD:	MOV PC,GTDIZY		;TURTLE IS DIZZY
