@@ -1050,8 +1050,8 @@ TVTCHK:	SAVE <,,#0>
 .ENDC
 
 .exami:	jsr pc,g1narg
-	
-
+	mov (b),b
+	jmp r1narg
 
 .DEPOS:	JSR PC,G1NARG
 	MOV B,D
