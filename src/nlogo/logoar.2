@@ -1,0 +1,60 @@
+;skip 1
+;kset 25fg
+;vsp 10
+This is a file of LOGO "areas", that is, topics and issues that are
+relativly independant from each other. The purpose of delinating these
+areas is to decouple descions about the various areas from each other,
+and, therefore, to allow developent of the critical (e.g. the evaluator)
+areas to proceed without complete design of the non-critical areas (e.g.
+the display oriented editor). Of course, it must also be realized that these
+areas do overlap sometimes, e.g. display oriented editor and evaluator
+block structure.
+
+A) evaluator
+	1) line evaluation
+		a) parentheses
+			i) IF grouping
+			ii) multiple arguments
+			iii) arithmetic grouping
+		b) infix
+		c) prefix
+		d) eval-related primitives (IF, IFTRUE, IFFALSE, ELSE, UNTIL)
+		e) special argument gobblers (PO, TO, EDIT, etc.)
+	2) procedure evaluation
+		a) variable scoping
+		b) title line syntax
+			i) locals
+			ii) variable number of arguments
+		c) invocations
+		d) block structure
+		e) GO
+		f) line labels
+		g) error handling
+		h) debugging
+			i) step
+			ii) trace
+
+B) reader
+	1) errors at read time vs not
+	2) storage of preparsed forms vs not
+	3) token terminator issues (e.g. :,+, etc.)
+	4) : for variable names
+	5) : or what for labels
+	6) procedure defining
+		a) line numbers
+
+C) primitives
+	1) EVAL related (under evaluator)
+	2) basic stuff (WORD, +, LIST, etc.)
+	3) hairy stuff
+		a) error related
+		b) procedure related
+	4) display stuff
+	5) filing
+	6) stream i/o
+	7) debugging
+
+D) editor
+	1) line oriented
+	2) display oriented
+	3) interaction with LOGO programs (e.g. Seymour's escape key)
