@@ -8,15 +8,15 @@
 ;always assumed.
 ;Next, X10 will prompt for the pdp10 filename.  BIN is the default 2nd part of
 ;this filename.
-;Finally, X10 will ask to be plugged into the pdp10.  This is done using the Y-connector;
-;it can be done even before X10 is started.
+;Finally, X10 will ask to be plugged into the pdp10.  This means unplugging the
+;2500 connector from the lsi-11 port, and plugging the ne corner phone line into
+;the lsi-11 port.
 
 ;A standard configuration for this process is:  
-;	patch panel:  t31 (at 4800 baud) => 4 (se learning lab)
+;	patch panel:  t31 (at 4800 baud) => 15 (ne learning lab)
 ;	3500 thumb switches:  2500 at 13 (= 4800 baud; usual setting is 15)
 ;			      lsi-11 at 6 (usual setting is 7)
-;The 2500 line and the se-corner phone-connector line converge to the lsi-11 port via
-;the Y-connector.
+;The 2500 line and the ne-corner-phone-connector line take turns connecting to the lsi-11 port.
 
 lsi=1
 .=400
@@ -37,7 +37,7 @@ invstk:	.word 0
 pdl2:
 	.blkw 40
 pdl:
-
+symp:	.word 0			;nonzero <=> include symbol table with file
 .insrt gld;utilit >
 
 crcap=	0
@@ -46,10 +46,13 @@ datcap:	.word ttycap
 itstty:	11.
 
 dumpas:	.byte 15
-	.asciz /Dump file as:  /
+	.asciz /Dump file as: /
 rdfrom:	.asciz /Read file from: /
-setup:	.asciz /Plug in the pdp10. Then type any character to proceed./
-
+setup:	.ascii /Type any character. You then have 5 seconds to plug in the pdp10./
+	.byte 15,12
+	.asciz /Good luck./
+sympms:	.asciz /Include symbol table? (y or n)/
+donmsg:	.asciz /Done!/
 fpath:	.ascii /0; . /
 fnam:	.blkb 30
 
@@ -82,7 +85,16 @@ filreq:	type #ttycap,#dumpas		;ask for filename to create
 	mov #fnam1,a
 	jsr pc,getlin		;read it to fnam1
 
-	type #ttycap,#setup	;"plug in pdp10, then type any character"
+	type #ttycap,#sympms	;symbols?
+	byti #ttycap		;get response
+	rest a
+	cmpb a,#'Y
+	beq 3$
+	cmpb a,#'y
+	bne 4$
+3$:	dec symp		;yes, flag that we want symbols
+
+4$:	type #ttycap,#setup	;"plug in pdp10"
 	invoki datcap,#.ttmov*400,#.timgi+.timgo	;image in/out; no more echos
 	byti #ttycap		;wait for ready signal
 	tst (sp)+
@@ -106,6 +118,7 @@ filreq:	type #ttycap,#dumpas		;ask for filename to create
 	jsr pc,loadrr		;ok, go ahead & xfer the file
 	jsr pc,closup		;close the file
 	type datcap,#logout	;to pdp10: :logout
+	type #ttycap,donmsg	;& inform luser
 	br .
 
 .sbttl loadrr
@@ -121,13 +134,15 @@ symbs:	jsr pc,blckin		; and get them
 
 	cmp count,#6		;end?
 	beq ldone		;if so,all done
-	add #120000,addr	;if not,relocate addr
+	tst symp		;if not, do we want the symbols?
+	beq 1$
+	add #120000,addr	;t, relocate addr
 	movb (d),b		;adjust checksum
 	sub #240,b
 	movb b,(d)
 
 	blko filcap,a,#filbuf	;write block into file
-	byto datcap,#4		;acknowledge block just written
+1$:	byto datcap,#4		;acknowledge block just written
 	br symbs		;and get the next one
 
 ldone:	byto datcap,#4		;final acknowledge
