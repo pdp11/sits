@@ -30,13 +30,15 @@ A=B
    .ENDC
 .ENDC
 
-.IF Z UNIX
-	%COMPAT==0
-	.ABS
+;This used to be in the IF Z UNIX, with a null macro in UNIX.  Why?
 	.MACRO VERSIO
 	.IIF NDF VERNF,VERNF==0
 	.IIF NDF PASS2,VERNF==VERNF+%FNAM2
 	.ENDM
+
+.IF Z UNIX
+	%COMPAT==0
+	.ABS
 	.MACRO DC VAR,VAL
 	VAR==VAL
 	.ENDM
@@ -45,8 +47,6 @@ A=B
 	.ENDM
   .IFF
 	.ASECT
-	.MACRO VERSIO
-	.ENDM
 	.MACRO DC VAR,VAL
 	VAR=VAL
 	.ENDM
