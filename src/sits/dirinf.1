@@ -1,0 +1,77 @@
+
+                                                                         DGS; DIRED INFO
+				
+
+
+This discussion is intended as general background information for the use of the DIRED
+program.  More information, including examples of each command, can be obtained by load-
+ing the program, starting it, then typing INFO followed by a Carriage Return.
+
+DIRED was written to aid in the manipulation of files and directories.  It is designed 
+to run under the SITS Operating System on the PDP-11/45.  The Operating System uses a 
+tree structure to access all files.  (Directories are files in this general sense.)
+
+A  central concept of the DIRED program is the act of pointing to a directory.  From
+such a reference point, any file or directory contained in the directory may be reached.
+This includes all files and directories contained in any sub-directory of the referenced
+directory.  The program can be used to:
+	a) Print out the contents of files and directories
+	b) Copy the contents of files and directories to other files or directories
+	c) Create and delete files and directories          
+
+Setting up a reference point is accomplished through the use of the ATTACH command.
+In the program itself, two pointers are always created, one to a source and one to a
+destination directory.  It is evident from b) that pointers to two different directories
+may be required.  Thus, before copying a file to a file in a different directory, both
+directories may be pointed to prior to the copy:
+	ATTACH 0; SRCDIR $ 1; MYDIR 		(1)
+(The syntax is discussed at the end of this document.)  To copy a file to another one
+within the same directory, just the single directory may be ATTACHED:
+	ATTACH 1; MYDIR				(2)  
+
+Immediately following (1), several COPYFILE commands could be given:
+	COPYFILE FILE01 $ FILE01	
+	COPYFILE FILE02 $ FILE02		(3)
+	COPYFILE FILE03 $ FILE03	
+The contents of FILE01 in SRCDIR would be copied to the file of that name in MYDIR, etc.
+
+It is not necessary to ATTACH directories prior to using them.  The complete path name
+may be specified at the time of issuing the command.  For example, if (1) were not
+given, (3) would become:
+	COPYFILE 0; SRCDIR FILE01 $ 1; MYDIR FILE01	
+	COPYFILE 0; SRCDIR FILE02 $ 1; MYDIR FILE02		(4)
+	COPYFILE 0; SRCDIR FILE03 $ 1; MYDIR FILE03     
+However, it can be seen that using the ATTACH command can save much typing.  For (3), 
+even more typing can be saved since the source and destination names are the same.  This
+particular command may be written as:
+	COPYFILE FILE01	
+	COPYFILE FILE02				(5)
+	COPYFILE FILE03
+Furthermore, the command may be abbreviated.  COPYFILE can become merely CF, and example
+(5) would become, CF FILE01, etc.  All but one command have abbreviations.
+
+Regarding the syntax, two arguments are separated by the altmode character which prints 
+as "$."  A root directory name is immediately followed by a semi-colon (";").  The 
+delimiter characters ";" and "$" need not be surrounded by blanks, as has been shown 
+here for clarity.   Otherwise, spacing is unimportant as long as each word is separated
+by at least one blank.
+
+The commands implemented by DIRED are as follows:		
+  Command	   Abbreviation				Function
+HELP		     ?			  Print list of all commands 
+INFORMATION	     INFO		  Give information and examples for each command
+QUIT, GOODBYE	     Q 			  Exit from DIRED
+ATTACH		     AT, A		  Construct source and dest. directory pointers
+COPYFILE	     CF			  Copy one file to another
+COPYTREE, MERGE	     CT			  Copy one directory to another
+POFILE		     POF		  Print out contents of file
+POINDEX		     POI		  Print out contents of directory
+POTREE		     POT		  Like POI, but including all sub-directories 
+CRTDIR		     CRD		  Create new directory
+CRTFILE		     CRF		  Create new file
+DLTFILE		     DF			  Delete file
+DLTREE, DLTDIR	     DT, DD		  Delete directory (incl. all sub-directories) 
+SUPRDL					  Like DT, etc.  Not recommended for use unless
+					    other attempts to delete fail
+
+
