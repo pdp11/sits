@@ -39,7 +39,6 @@ VERSIO
 
       DC LSPRNT,0
       DC LSMAP,0
-      dc rxdisk,0
 
    .ENDC
 
@@ -101,6 +100,8 @@ MULTTY==1
 .IFF
 .IIF G LSTTY-1,MULTTY==1
 .ENDC
+
+.iif ndf rxdisk, dc rxdisk,0
 .ENDC
 
  ;RELATIVLY USELESS STUFF
