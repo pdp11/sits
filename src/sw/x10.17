@@ -1,0 +1,221 @@
+; -*-fundamental-*-
+.title x10: lsi-11 end of pdp-10 => lsi-11  binary file xfer program
+
+;This program is to be run on the 3500 (lsi-11) to xfer a binary file
+;from the pdp-10 to a 3500 floppy disk.
+;X10 will first prompt for the name of the file as it is to be written on
+;the floppy.  The filename only is to be specified;  the directory [0; .] is
+;always assumed.
+;Next, X10 will prompt for the pdp10 filename.  BIN is the default 2nd part of
+;this filename.
+;Finally, X10 will ask to be plugged into the pdp10.  This is done using the Y-connector;
+;it can be done even before X10 is started.
+
+;A standard configuration for this process is:  
+;	patch panel:  t31 (at 4800 baud) => 4 (se learning lab)
+;	3500 thumb switches:  2500 at 13 (= 4800 baud; usual setting is 15)
+;			      lsi-11 at 6 (usual setting is 7)
+;The 2500 line and the se-corner phone-connector line converge to the lsi-11 port via
+;the Y-connector.
+
+lsi=1
+.=400
+
+.insrt gld;macros >
+.insrt gld;lsix >
+
+.macro	invoki a1,a2,a3,a4
+	mov p,invstk
+	invok a1,a2,a3,a4
+	bne .+6
+	mov invstk,p
+.endm
+
+invstk:	.word 0
+
+	.blkw 40
+pdl2:
+	.blkw 40
+pdl:
+
+.insrt gld;utilit >
+
+crcap=	0
+ttycap=	2
+datcap:	.word ttycap
+itstty:	11.
+
+dumpas:	.byte 15
+	.asciz /Dump file as:  /
+rdfrom:	.asciz /Read file from: /
+setup:	.asciz /Plug in the pdp10. Then type any character to proceed./
+
+fpath:	.ascii /0; . /
+fnam:	.blkb 30
+
+nload:	.ascii /:LOGIN PDP11/
+	.byte 15
+	.ascii /:NLODER/
+	.byte 15
+fnam1:	.blkb 30
+
+logout:	.ascii /:LOGOUT/
+	.byte 15,0
+	.even
+filcap:	.word 0
+
+start:	mov #pdl,p		;initialize stack
+	bis #100,177560
+
+loader:	invoki #ttycap,#.ttmov*400,#.tlipm+.timgi+.ticvm+.tirst+.tiecm
+			;line input,edits,rubouts,capitalize,reset
+filreq:	type #ttycap,#dumpas		;ask for filename to create
+	mov #fnam,a		;pointer to name buffer
+	jsr pc,getlin		;read filename
+
+	mov #fpath,e
+	jsr pc,outfil		;open the file
+	bcs filreq		;try again if unsuccessful
+	mov a,filcap
+
+	type #ttycap,#rdfrom	;ask for pdp10 file name
+	mov #fnam1,a
+	jsr pc,getlin		;read it to fnam1
+
+	type #ttycap,#setup	;"plug in pdp10, then type any character"
+	invoki datcap,#.ttmov*400,#.timgi+.timgo	;image in/out; no more echos
+	byti #ttycap		;wait for ready signal
+	tst (sp)+
+
+
+	byto datcap,#'Z-100	;to pdp10: ^z
+
+	clr a			;wait about 5 sec.
+	mov #20.,b
+1$:	sob a,1$
+	sob b,1$
+				;to pdp10:
+	type datcap,#nload	; :login pdp11<cr> :nloder<cr> <filename>
+	byto datcap,#15		; <cr>
+
+
+	jsr pc,loadrr		;ok, go ahead & xfer the file
+	jsr pc,closup		;close the file
+	type datcap,#logout	;to pdp10: :logout
+	br .
+
+.sbttl loadrr
+
+loadrr:	jsr pc,blckin		;read a block into filbuf
+	blko filcap,a,#filbuf	;dump it
+	byto datcap,#4		;acknowledge
+	cmp count,#6		;end block?
+	bne loadrr		;if not,get another
+
+	byto datcap,#5		;ask for symbols
+symbs:	jsr pc,blckin		; and get them
+
+	cmp count,#6		;end?
+	beq ldone		;if so,all done
+	add #120000,addr	;if not,relocate addr
+	movb (d),b		;adjust checksum
+	sub #240,b
+	movb b,(d)
+
+	blko filcap,a,#filbuf	;write block into file
+	byto datcap,#4		;acknowledge block just written
+	br symbs		;and get the next one
+
+ldone:	byto datcap,#4		;final acknowledge
+	blko filcap,a,#filbuf	;write last block out
+	rts pc
+
+				;read block;return neg. byte cnt in a 
+blckin:	mov #filbuf,d		;d is filbuf pointer
+	clr f			;init f to be checksum
+b1:	byti datcap		;get a coded 1 (hopefully)
+	rest a
+	sub #40,a
+	cmpb a,#1
+	bne b1			;if not,try again
+	byti datcap		;next byte (0)
+	rest b
+	sub #40,b
+	ash #6,b
+	add b,a
+	mov a,(d)+		;stash the 0,1
+	add a,f			;update checksum
+
+	jsr pc,wordin		;get count
+	mov a,e			;count in e
+	mov a,(d)+		;and into filbuf
+	add a,f
+	swab a
+	add a,f			;update checksum
+	sub #4,e		;got 4 bytes already
+bloop:	jsr pc,wordin		;another word
+	movb a,(d)+		;write lo byte into filbuf
+	add a,f			;update checksum
+	swab a			;make next byte low
+	dec e			;update count
+	beq bdone		;if no more left,done
+	movb a,(d)+		;2nd byte into filbuf
+	add a,f			;and into checksum
+	sob e,bloop		;if more remain,get them
+
+	jsr pc,wordin		;get checksum
+				;unless already got it
+bdone:	movb a,(d)		;put it in filbuf
+	add a,f
+	tstb f			;same as expcted?
+	beq fildmp		;if so,dumpit
+	byto datcap,#6		;bad acknowledge
+	jmp blckin		;otherwise,try again
+
+fildmp:	mov count,a
+	inc a			;extra byte for checksum
+	neg a			;need neg # of bytes to write
+	rts pc
+
+
+		;a word comes in as follows:6 bits + 40 in first byte,
+		;4 bits + 40 in 2nd byte, and 6 bits +40 in third byte.
+		;wordin assembles this into a word in a
+		;a & b are clobbered
+wordin:	byti datcap		;low 6 bits in here
+	rest a
+	sub #40,a
+	byti datcap		;next 4 bits
+	rest b
+	sub #40,b
+	ash #6,b
+	add b,a
+	byti datcap		;final 6 bits
+	rest b
+	sub #40,b
+	ash #10.,b
+	add b,a
+	rts pc
+
+filbuf:	.word 0			;standard block beginning
+count:	.word 0
+addr:	.blkw 1000		;512 words long
+
+getlin:	save <r1>	;** don't overflow
+	mov r0,r1
+1$:	byti #ttycap
+	rest r0
+	bic #-400,r0
+	cmp r0,#15
+	beq 10$
+	movb r0,(r1)+
+	br 1$
+
+10$:	clrb (r1)+
+	mov r1,r0
+	rest <r1>
+	rts pc
+
+
+
+.end start
