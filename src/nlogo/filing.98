@@ -1345,6 +1345,7 @@ MWACKI:	SAVE A
 	SOB A,1$
 	CMP #TMPOUT,MWCOUT
 	BEQ 5$
+	REST A
 	CMP -(P),-(P)
 	JMP DRIBER
 5$:	JMP LPTERR
@@ -1352,15 +1353,16 @@ MWACKI:	SAVE A
 	$BYTI
 	CMP #6,(P)+
 	BNE 1$
-3$:	SAVE <,,F>
-	BIS #.TTPEK*400,(P)
-	$INVOK
-	TST (P)+
-	BLT 4$
-	SAVE F
-	$BYTI
-	TST (P)+
-	BR 3$
+3$:
+;	SAVE <,,F>
+;	BIS #.TTPEK*400,(P)
+;	$INVOK
+;	TST (P)+
+;	BLT 4$
+;	SAVE F
+;	$BYTI
+;	TST (P)+
+;	BR 3$
 4$:	REST A
 	RTS PC
 .ENDC
