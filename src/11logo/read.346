@@ -685,11 +685,13 @@ PRDATA:	CMP #INUM,A	;PRINT DATA IN A,B. 7777 FIELD OF A IS 0000
 	BIC #PQF,FLAGS2
 	CMP #LIST,A
 	BEQ PRLST
+.IFNZ FILES
 .IIF NZ OFILES,	TST DSKNCH
-.IIF Z OFILES,	TST WRTFLG
+.IIF NZ NFILES,	TST WRTFLG
 	BEQ	PRSNP	;YES
 	PRTXT	^/" /	;OUTPUT EMPTY
 	BR	PRSRET
+.ENDC
 PRSNP:	PRTXT ^\%SNAP%\	;CANT PRINT A SNAP
 	BR PRSRET
 PRLSTR:	JSR PC,.LOAD	;PRINT LONG STRING
@@ -849,24 +851,19 @@ SHOW1:	CMP #SFUN,A
 
 SHOW12:	CMP #$ALL,B
 	BEQ SHOWAL
-	CMP #$FILE,B
-	.IFNZ OFILES
-	BEQ POFILE
-	.ENDC
-	.IFZ OFILES
-	BEQ .POFILE
-	.ENDC
+.IIF NZ FILES,	CMP #$FILE,B
+.IIF NZ OFILES,	BEQ POFILE
+.IIF NZ NFILES,	BEQ .POFILE
 	CMP #$TITLE,B
 	BEQ POT
 	CMP #$LINE,B
 	BEQ POL
-	CMP #$INDEX,B
-	.IFNZ OFILES
-	BEQ POI
-	.IFF
+.IFNZ FILES
+.IIF NZ FILES,	CMP #$INDEX,B
+.IIF NZ OFILES,	BEQ POI
 	BNE .+6
 	JMP .POI
-	.ENDC
+.ENDC
 	CMP #$PROCE,B
 	BEQ SHALPR
 	CMP #$NAMES,B
@@ -880,7 +877,7 @@ SHOW23:	.IFNZ OFILES
 	.ENDC
 	CMP #$TITLS,B
 	BEQ SHALTI
-	.IFZ OFILES
+	.IFNZ NFILES
 	CMP #$TREE,B
 	BNE SHOWE1
 	JMP .POTREE
@@ -908,10 +905,10 @@ POL:	TST TOPRNM
 	PRCR
 	POPS C
 	RTS PC
-	.IFZ OFILES
+	.IFNZ NFILES
 .POFILE:	JSR PC,EVAL
 	ERROR+UELX
-	JMP .POI
+	JMP .POF
 	.ENDC
 	.IFNZ OFILES
 POFILE:	JSR PC,GNT	;SEE IF "PO FILE TITLES"
@@ -1000,8 +997,9 @@ SHALN1:	JSR PC,GNOLE	;GET NEXT UOE
 	BR SHALN1	;NO THING FOR THIS UOE
 	MOV B,C	;SAVE VALUE PTR
 	MOV F,B	;GET UOE PTR
+.IFNZ FILES
 .IIF NZ OFILES,	TST DSKNCH
-.IIF Z OFILES,	TST WRTFLG
+.IIF NZ NFILES,	TST WRTFLG
 	BEQ SHALN2	;NO
 	TST C		;IS VALUE = "UNBOUND"? (0?)
 	BEQ SHALN1	;SKIP THIS ATOM
@@ -1010,22 +1008,27 @@ SHALN1:	JSR PC,GNOLE	;GET NEXT UOE
 	SPOP B
 	JSR PC,PPNAME	;PRINT THE NAME
 	PRTXT ^\ (\
+	BR SHALN3
+.ENDC
+SHALN2:	JSR PC,PRUV	;PRINT THE NAME
+	PRTXT ^/ IS/
+	TST C		;UNBOUND?
+	BEQ SHALN5	;YES; JUST SAY SO
 SHALN3:	SPACE
 	SPUSHS C
 	INC NBKTS
 	JSR PC,PRS1
 	ADD #2,S
+.IFNZ FILES
 .IIF NZ OFILES,	TST DSKNCH
-.IIF Z OFILES,	TST WRTFLG
+.IIF NZ NFILES,	TST WRTFLG
 	BEQ SHALN4
 	PRTXT ^\ )\
+.ENDC
 SHALN4:	PRCR
 	BR SHALN1
-SHALN2:	JSR PC,PRUV	;PRINT THE NAME
-	PRTXT ^/ IS/
-	TST C		;UNBOUND?
-	BNE SHALN3	;NO; GO AHEAD
-	PRTXT ^/ UNBOUND./
+
+SHALN5:	PRTXT ^/ UNBOUND./
 	BR SHALN4
 
 CONTEN:	;MAKE A LIST OF ALL ATOMS THAT HAVE A PROCEDURE
@@ -1333,9 +1336,13 @@ ERASE1:	CMP #SFUN,A
 	CMP #$BURY,B
 	BNE .+6
 	JMP EBURY
-	.IFNZ OFILES
+	.IFNZ FILES
 	CMP #$FILE,B
 	BEQ ERFI
+	.ENDC
+	.IFNZ NFILES
+	CMP #$INDEX,B
+	BEQ ERINDX
 	.ENDC
 	CMP #$LINE,B
 	BEQ ERLINE
@@ -1404,6 +1411,15 @@ ERFI:	MOV #FNAME,C
 	JSR PC,DELETF
 	JSR PC,FILERR
 	RTS PC
+	.ENDC
+
+	.IFNZ NFILES
+ERFI:	JSR PC,EVAL
+	ERROR+UELX
+	JMP .DELETE
+ERINDX:	JSR PC,EVAL
+	ERROR+UELX
+	JMP .DELI
 	.ENDC
 	.STITL TRACE
 EBURY:	BIC #TF6,TFLAGS
@@ -1488,12 +1504,10 @@ STRA1:	INC NBKTS
 	POP A
 	RTS PC
 
-SETSTF:	JSR PC,CKSST
-	BIS #TRACEF,FLAGS2	;SET SYSTEM TRACE FLAG
+SETSTF:	BIS #TRACEF,FLAGS2	;SET SYSTEM TRACE FLAG
 	RTS PC
 
-CLRSTF:	JSR PC,CKSST
-	BIC #TRACEF,FLAGS2
+CLRSTF:	BIC #TRACEF,FLAGS2
 	RTS PC
 
 FLEV:	MOV FUNLEV,B	;RETURN USER PROC CALL DEPTH
@@ -1624,373 +1638,4 @@ COMT:	.BUG.		;GNT SHOULD SWALLOW ALL COMMENTS;
 
 ;EXAMINE AN ABSOLUTE LOCATION
 EXAMINE: JSR PC,CKSST	;MAKE SURE USER IS PRIVILEGED
-	JSR	PC,GLWANE	;GET A WORD OF ARGUMENT
-	ERROR+WTAB
-	MOV	#INUM,A
-	MOV	#8.-10.,ABASE
-	JSR	PC,CONVERT	;CONVERT ARGUMENT TO OCTAL NUMBER IN B
-	ERROR+WTAB
-	MOV B,C
-	JSR PC,.LDP2
-	MOV A,B
-	BIC #1,B	;MAKE SURE NOT BYTE
-	MOV (B),WVALUE	;SAVE CONTENTS FOR VALUE TO OUTPUT
-	JSR	PC,PLOCB	;PRINT LOCATION & CONTENTS
-	CLR	ABASE
-	RTS PC
-
-;DEPOSIT IN AN ABSOLUTE LOCATION
-DEPOSIT:	JSR PC,EXAMINE	;PRINT LOCATION
-	PUSH B		;SAVE LOCATION
-	SPUSH	(B)	;AND FORMER CONTENTS
-	JSR PC,RDSTR	;READ A LINE FROM THE TTY
-	BR	DEPOS2	;EMPTY
-	MOV #INUM,A
-	MOV @S,B
-	MOV	#8.-10.,ABASE	;MAKE FOLLOWING CONVERSION OCTAL
-	JSR PC,CONVERT	;CONVERT TO NUMBER
-	ERROR+WTAB	;CONVERSION FAILED
-	MOV B,C
-	JSR PC,.LDP2	;GET NUMBER BACK IN A
-	POP D		;FORMER CONTENTS
-	SPOP B		;LOCATION
-	MOV A,WVALUE	;SAVE NEW VALUE AS CONTENTS
-	MOV A,(B)	;DEPOSIT
-	CMP	(B),D
-	BEQ	DEPOS1	;BR IF LOCATION NOT CHANGE
-	TST USER
-	BLE DEPOS1	;IF USER ALREADY ON SYSTEM CONSOLE
-	JSR A,SPRINT
-	JSR PC,PLOCB	;PRINT LOC AND NEW CONTENTS
-	PRTXT ^/ WAS: /
-	MOV D,A
-	JSR PC,PRON	;PRINT OLD CONTENTS
-	PRCR
-	SPREND
-DEPOS1:	CLR	ABASE	;SET CONVERT BASE BACK TO DECIMAL
-	RTS PC		;DONE.
-DEPOS2:	POP B
-	SPOP B
-	BR DEPOS1
-
-
-;OUTPUT LAST CONTENTS SEEN IN AN EXAMINE OR DEPOSIT
-VALUE:	MOV WVALUE,B
-	JMP R1NARG
-	.STITL ERRORS AND HANDLER
-EMTBK:	MOV #SRET,@P	;FAKE IT OUT
-.IIF NZ A1120,	RTI
-.IIF NZ A1145,	RTT
-ERRBK:	PUSH A
-	.IFNZ OFILES
-	;	*** RON'S DISC CLEANUP STUFF
-	CMP #WRITEC,PCHR	;AM I DOING DISC OUTPPUT?
-	BNE ERBK2	;NO
-	JSR PC,WRITCU	;CLOSE THE FILE
-	JSR PC,DELETF	;DELETE IT
-	.ENDC
-ERBK2:	MOV #WDIRSW,D
-	JSR PC,LCUGRB
-	MOV #PGRAB,D
-	JSR PC,LCUGRB	;RLEASE PAPER TAPE
-.IIF NZ OFILES,	CMP #TYI,GCHR	;IF ERROR OUT OF READ
-.IIF Z OFILES,	TST REDFLG
-	BEQ ERBK3	;FINISH UP PENDING PROC DEF
-.IIF Z OFILES,	CLR FILFLG
-	TST TOPRNM
-	BEQ ERBK3
-	JSR PC,END
-ERBK3:	.IFNZ OFILES
-	TST FILFLG
-	BNE .+6
-	CLR DSKNCH
-	.ENDC
-	.IFZ OFILES
-	TST WRTFLG
-	BEQ .+6
-	JSR PC,WDELBL
-	.ENDC
-	MOV #TYI,GCHR
-	MOV #TYO,PCHR
-	MOV 2(P),A
-	MOV A,LASTER
-	.IFNZ SEG
-	MFPI -2(A)	;GET ERROR NUMBER (CROCK!!!)
-	MOV (P)+,A
-	.IFF
-	MOV -2(A),A	;GET ERROR #
-	.ENDC
-	BIC #177400,A
-	MOV A,ERRORN
-	CLR NTOKEL
-	CLR NLINEL
-	MOV CPP,NPROCL
-	BEQ ERBK5
-	MOV CPLN,NLINEL
-	MOV CTN,NTOKEL
-ERBK5:	CMP A,#BUG	;DONT ALLOW ERRSET FOR .BUG. OR FBUG
-	BEQ ERSET2
-	CMP A,#FBUG
-	BEQ ERSET2
-	TST ERPROC	;ERROR SET ON?
-	BEQ ERSET2
-	JSR F,CACSAV
-	PUSH CO
-	SPUSH CO+2
-	SPUSH NOR
-	MOV USER,U	;SAVE BRAKE STATUS
-	SPUSH BRAKE(U)
-	CLR BRAKE(U)
-	MOV (P),BRAKEL
-	BEQ .+6	;IF THERE REALLY WAS A BRAKE PENDING,
-	JSR PC,BRAKR	;ALLOW TYPEOUT AGAIN
-	SPUSH ERPROC
-	MOV ERPROC,CO+2
-	CLR ERPROC
-	JSR PC,SAVPPS	;YES - SAVE THE PDLS
-	BIS #1,CSPDLP	;INDICATE ERRORSET PUSH
-	BIS #1,CPDLP
-	MOV #UFUN,CO
-	CLR NOR
-	JSR PC,PEVAL
-	BR ERSET1	;DIDNT OUTPUT
-	JSR PC,PRS1	;DID OUTPUT, PRINT IT
-	JSR PC,RESPPS
-	POP ERPROC
-	JMP ERTLN	;THEN ERROR RETURN
-ERSET1:		;DIDNT OUTPUT, DO WHAT U WERE GOING TO
-	JSR PC,RESPPS
-	POP ERPROC
-	MOV USER,U
-	SPOP BRAKE(U)
-	SPOP NOR
-	SPOP CO+2
-	SPOP CO
-	JSR F,CACRES
-ERSET2:
-	MOV 2(P),A
-;	BIT #PADERF,FLAGS2
-;	BEQ ERBK1
-	TST NOADDR
-	BNE ERBK1
-	JSR PC,PRONL	;PRINT ADDR WHERE ERROR OCCURED
-	SPACE
-ERBK1:	MOV ERRORN,A
-	CMP #FSTNER,A
-	BLE NEWERR
-	ASL A
-	MOV ERTAB(A),A	;POINTS TO LIST FOR THIS ERROR
-	JMP @A	;XFER TO LIST
-NEWERR:	ASL A
-	.IFZ NEWERS
-	MOV ERTAB(A),ERRPNT
-	.ENDC
-	.IFNZ NEWERS
-	SPUSH 	B
-	SPUSH A
-	JSR PC,SYDRBG
-	CLR (A)+
-	SPOP B
-	MOV ERTAB(B),(A)
-	SUB ERTAB+2(B),(A)
-	ASR (A)+
-.IFZ SEG
-	MOV #DBUF,(A)+
-.IFF
-	SPUSH C
-	SPUSH F
-	MOV USER,F
-	MOV SLOTAS(F),C
-	MOV #ERRBUF-PURE,(A)
-	MOV SLOTHA(C),F
-	ADD SLOTCA(C),(A)+
-	ADC F
-	ASH #4,F
-	MOVB F,6(A)
-	SPOP F
-	SPOP C
-.ENDC
-	CLR 2(A)
-	MOV ERTAB(B),(A)
-	ASR (A)
-	ADD ERBASE,(A)+
-	ADC (A)
-	ADD ERBASE+2,(A)+
-	TST (A)+
-	BISB #DREADC,(A)
-	JSR PC,DSKWAI
-	MOV #ERRBUF,ERRPNT
-	SPOP B
-	.ENDC
-NEWER1:	MOVB @ERRPNT,D
-	BEQ ERTLN
-	BGT NEWER2
-	BIC #177600,D
-	ASL D
-	MOV ROTTAB(D),A
-	JSR PC,(A)
-NEWER3:	INC ERRPNT
-	BR NEWER1
-NEWER2:	JSR PC,TYO
-	BR NEWER3
-ERRRT:	POP A
-.IIF NZ A1120,	RTI
-.IIF NZ A1145,	RTT
-
-PPLACE:	MOV FUNLEV,A
-	BEQ PPLAC1
-	CPRTXT ^\AT LEVEL \
-	JSR PC,PRDN
-	PRTXT ^\  LINE \
-	MOV CPLN,A
-	JSR PC,PRDN
-	PRTXT ^\  IN \
-	MOV CPP,B
-	JSR PC,PPNAME
-PPLAC1:	JMP .CRLF
-
-ERTLN:			;ERR RETURN TO LEVEL N
-	TST ALEVN
-	BEQ ERTL0
-	BIS #ERRF+BRKF,FLAGS
-	MOV USER,U
-	CLR BRAKE(U)
-ERTLN1:	JSR PC,PPLACE
-	JMP MLOOP
-ERTL0:			;ERR RETURN TO LEVEL 0
-	MOV	USER,U
-	CLR	BRAKE(U)
-ERTL01:	JSR PC,PPLACE
-EXIT:
-ERTL2:	TST FUNLEV	;POP UP TO LEVEL 0
-	BLE ERTL3
-	MOV #ERTL2,PSTOPR
-	JMP PSTP15
-ERTL3:	CLR A	;CLEAR OUT PDLS
-	JSR PC,PPTA
-	CLR A
-	JSR PC,PSTA
-	CLR CSPDLP
-	CLR CPDLP
-	MOV #ERCLR1,A
-	MOV #<ERCLR2-ERCLR1>/2,B
-	CLR (A)+
-	DEC B
-	BGT .-4
-	BIC #EDTIF+ERRF+BRKF,FLAGS
-	JMP MLOOP
-
-	.STITL ERROR ROUTINES
-		; ****  THESE ARE NOW ALPHABETIZED   *****
-
-.IIF NDF MAXELN,MAXELN==0
-
-BRK.E:
-	MOV USER,U
-	MOV BRAKE(U),A
-	CLR BRAKE(U)
-	JSR PC,BRAKR
-	TST A
-	BLT PAUSE
-BRK.2:	PRTXT ^\BREAK\
-	JMP ERTL01
-
-PAUSE:	BIS #BRKF,FLAGS
-	PRTXT ^\PAUSE \
-	JMP ERTLN1
-
-	BEGER BUG
-	TST	DEBSW
-	BNE	BUG.1	;BR IF DEBUGGING
-	DEC NSYBUG
-	BGE .+4
-	ERROR+FBUG
-BUG.1:	PRTXT ^/HELP!!!  SYSTEM BUG VER=/
-	MOV #VERNF,A
-	JSR PC,PRDN
-	JSR PC,.SPACE
-	PUSH	E
-	SPUSH	U
-	MOV	USER,U
-	MOV	UTTY(U),E
-	TST	TOTN(E)
-	BGT	.-4	;WAIT TILL TYO BUF EMPTY
-	POP	U
-	SPOP	E
-	SPOP A
-	TST	DEBSW
-	BEQ	.+4
-BUGBPT:	BPT	;BRK IF IN DEBUG MODE
-	ENDER
-
-	BEGER CTIT
-	PRTXT ^\YOU ARE ALREADY DEFINING \
-	MOV TOPRNM,B
-	JSR PC,PPNAME
-	ENDER
-
-	BEGER FBUG
-	PRTXT ^/FATAL SYSTEM BUG!/
-	JMP GOODBY
-
-	BEGER HNM
-	MOV #UFUN,A
-	JSR PC,PROAB
-	PRTXT ^/ HAS NO MEANING./
-	ENDER
-
-	BEGER LDE
-	MOV JPLN,CPLN	;MAKE JUMPED-FROM LINE = POINT OF ERROR
-	PRTXT ^\LINE \
-LDE.E1:	MOV B,A
-	JSR PC,PRDN	;LINE # SHOULD BE IN A
-	PRTXT ^\ DOESN'T EXIST.\
-	ENDER
-
-	BEGER PAE
-	MOV #UFUN,A
-	MOV TEMP,B
-	PRTXT ^/PROCEDURE /
-	JSR PC,PROAB
-	PRTXT ^/ ALREADY EXISTS./
-	ENDER
-
-
-	BEGER PNH
-	PRTXT ^/PROCEDURE /
-	JSR PC,PRCT
-	PRTXT ^/ NOT HERE/
-	ENDER
-
-	BEGER PNH1
-	MOV CPP,B
-	MOV #UFUN,A
-	PRTXT ^/PROCEDURE /
-	JSR PC,PROAB	;PRINT OPERATOR IN A,,B
-	PRTXT ^/ HAS BEEN ERASED!!??/
-	ENDER
-
-	BEGER TDE
-	PRTXT ^\TTY \
-	JMP LDE.E1
-
-	BEGER TMAP
-	PRTXT ^\A PROCEDURE CAN'T TAKE MORE THAN 32 ARGS.\
-	JMP ERRRT	;RETURN!!
-	BEGER WTA
-ERWTA:	JSR PC,PRCO
-	PRTXT ^/ DOESN'T LIKE /
-	JSR PC,PRS1
-	PRTXT ^/ AS INPUT./
-	ENDER
-
-	BEGER WTAA
-	PUSHS A
-	BR	ERWTA
-	ENDER
-
-	BEGER WTAB
-	PUSHS B
-	BR	ERWTA
-	ENDER
-
+	JSR	PC,GLWANE	;GET A WORD OF ARGUME                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
