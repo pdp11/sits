@@ -1,0 +1,2337 @@
+.TITLE TV
+.ABS
+
+.XCREF	CURCHR,...,....,FONT
+
+;REGISTER ASSIGNMENTS
+
+A=%0
+B=%1
+C=%2
+T=%3
+TT=%4
+U=%5
+SP=%6
+PC=%7
+
+;GEOMETRY
+
+BITPL==1100		;BITS PER LINE
+NLINS==706		;LINES ON SCREEN
+BYTPL==BITPL/10		;BYTES PER LINE
+WRDPL==BYTPL/2		;WORDS PER LINE
+
+CHRWD==7		;CHARACTER WIDTH
+CHRHT==14		;CHARACTER HEIGHT
+CHRPL==BITPL/CHRWD	;CHARACTERS PER LINE
+CHRLN==NLINS/CHRHT	;CHARACTER LINES ON SCREEN
+
+;MEMORY MAP
+
+TVLO=60000		;ORIGIN OF DISPLAY MEMORY
+TVHI=TVLO+<BYTPL*NLINS>-2	;HIGHEST LEGAL DISPLAY ADDRESS
+CN=164140
+CINC=CN+0
+CCONS=CN+2
+CRADR=CN+4
+CBLWC=CN+6
+CDKAC=CN+10
+C16K=CN+13
+CSHC=CN+12
+CMASK=CN+14
+CDKWIN=CN+16
+CRGWIN=CN+20
+CRG=CN+22
+TKS=177560		;TTY KEYBOARD STATUS
+TKB=177562		;TTY KEYBOARD BUFFER
+KLIS=175610		;KL11 INPUT STATUS
+KLIB=175612		;KL11 INPUT BUFFER
+KLOS=175614		;KL11 OUTPUT STATUS
+KLOB=175616		;KL11 OUTPUT BUFFER
+PS=177776		;PROCESSOR STATUS REGISTER
+CSR=177570		;CONSOLE SWITCH REGISTER
+LKS=177546		;LINE CLOCK STATUS
+LKPC=100		;LINE CLOCK INTERUPT VECTOR
+LKPSW=102
+KLIPC=300		;KL11 INPUT INTERUPT VECTOR
+KLIPSW=302
+TYIPC=60		;TTY INPUT INTERUPT VECTOR
+TYIPSW=62
+BUFSIZ==400		;BUFFER SIZE
+PLKS==40		;PSEUDO LKS SET BY PDP-10
+
+CIORX==100
+CXORX==200
+CSETX==300
+;TIMING
+
+BLKTIM=30.			;# CLOCK TICKS BETWEEN BLINKS
+
+.MACRO	PUSH A
+	.NLIST
+	MOV	A,-(SP)
+	.LIST
+	.ENDM
+
+.MACRO	POP A
+	.NLIST
+	MOV	(SP)+,A
+	.LIST
+	.ENDM
+PDL=500
+
+.=3000
+GO:	RESET
+	CLR	PS
+	MOV	#PDL+2,SP
+	MOVB #43,C16K
+	CLR CCONS
+	JSR	PC,HU
+	MOV	#TYIBRK,TYIPC
+	MOV	#4_5,TYIPSW
+	MOV	#KLIBRK,KLIPC
+	MOV	#5_5,KLIPSW
+	MOV	#CLKBRK,LKPC
+	MOV	#6_5,LKPSW
+	CLR	KLOS
+	CLR	ACTCHR
+	MOV	#BUF,GETCC
+	MOV	#BUF,PUTCC
+	JSR	PC,SETREG	;SET CONSOLE REGISTER FROM SWITCHES
+	JSR	PC,FORM
+	MOV #CIORX,CHSET
+	CLR CHMASK
+	CLR	BLINK
+	MOV	#100,A
+	MOV	A,TKS		;ENABLE INTERUPTS
+	MOV	A,KLIS
+	MOV	A,PLKS		;FOR CLOCK INTERRUPTS
+	MOV	A,PLKS
+	CLR	KSET		;DEFAULT TO ASCII
+GO1:	CMP	CSR,OCSR
+	BEQ	GO1B		;SWITCHES HAVEN'T CHANGED
+	MOV	CSR,OCSR
+	JSR	PC,SETREG
+	CLR	A
+	TST	OCSR
+	BGE	GO1A
+	MOV	#10000,A
+GO1A:	MOV	#400,KSET
+	BIT	#4,OCSR		;CHANGE KSET MAYBE?
+	BNE	.+6
+	CLR	KSET		;HE WANTS ASCII
+	MOV	A,CRG
+	BIT	#2,OCSR
+	BNE	GO		;RESET THE WORLD
+	BIT	#1,OCSR
+	BEQ	GO1B
+	BPT			;LOW ORDER BIT ON GETS US RUG
+	CLR	OCSR
+GO1B:	TST	ACTCHR
+	BGT	GO2
+	WAIT
+	BR	GO1
+GO2:	DEC	ACTCHR
+	MOVB	@GETCC,A
+	INC	GETCC
+	CMP	GETCC,#BUFEND
+	BLO	GO3
+	MOV	#BUF,GETCC
+GO3:	BIC	#177600,A
+	ASL	A		;BYTES
+	BIC	#100,LKS	;TURN OFF CLOCK
+	JSR	PC,ADDCHR
+	BIS	#100,LKS
+	BR	GO1
+
+SETREG:	MOV	CSR,A		;SET CONSOLE REGISTER FROM SWITCHES
+	BIC	#177607,A	;SET CONSOLE REGISTER
+	ASR	A
+	ASR	A
+	ASR	A
+	MOVB	A,CCONS
+	RTS	PC
+;INTERUPT ROUTINES
+
+TYIBRK:	BIT	#4000,KLOS
+	BNE	TYIBRK
+	MOVB	TKB,KLOB
+	RTI			;WHAT COULD BE EASIER
+
+KLIBRK:	BIT	#4000,KLIS
+	BEQ	.+4
+	BPT
+	PUSH	A
+	MOVB	KLIB,A		;GET THAT CHARACTER
+	BIC	#177600,A
+	CMP	A,#177
+	BEQ	KLIRET		;IGNORE RUBOUTS
+	CMP	ACTCHR,#BUFSIZ
+	BHIS	KLIRET
+	INC	ACTCHR
+	MOVB	A,@PUTCC
+	INC	PUTCC
+	CMP	PUTCC,#BUFEND
+	BLO	KLIRET
+	MOV	#BUF,PUTCC
+KLIRET:	POP	A
+	RTI
+CLKBRK:	PUSH A
+KBGET:	MOV 164000,A
+	BEQ KBDONE
+	BIT #7400,A
+	BNE .+6
+	MOV A,KLOB
+	BR KBGET
+KBDONE:	POP A
+	INC	TICKS
+	DEC	BLINK
+	BLE	CLKBLK
+CLKBR1:	RTI
+CLKBLK:	MOV	#BLKTIM,BLINK	;RESET TIMER
+	PUSH	A
+	PUSH	B
+	PUSH	C
+	PUSH	T
+	PUSH	TT
+	PUSH	U
+	PUSH	CC
+	PUSH	CLINE
+	PUSH	CPOS
+	PUSH	CCONS
+	PUSH	CHMASK
+	PUSH	CHSET
+	MOV #-1,CHMASK
+	MOV #CXORX,CHSET
+	TST	BLCC
+	BEQ	BLINK1
+	MOV	BLCC,CC		;BLINK THIS ONE
+	MOV	BLCPOS,CPOS
+	MOV	BLCLIN,CLINE
+	CLR	BLCC
+	BR	BLKRET
+BLINK1:	MOV	CC,BLCC
+	MOV	CPOS,BLCPOS	;RESTORE THIS ONE
+	MOV	CLINE,BLCLIN
+BLKRET:	MOV	#177_1,A
+	JSR	PC,PCHR1
+	POP	CHSET
+	POP	CHMASK
+	POP	CCONS
+	POP	CPOS
+	POP	CLINE
+	POP	CC
+	POP	U
+	POP	TT
+	POP	T
+	POP	C
+	POP	B
+	POP	A
+	RTI
+;SOME LOW LEVEL ROUTINES
+
+FORM:	CLR	BLCC
+	CLR CMASK
+	CLR CRGWIN	;INTIALIZE WORD TO BE WRITTEN
+	CLR CRADR	;SET REGULAR ADDRESS
+	MOV #-20000,CBLWC	;SET WORD COUNT
+	TST CBLWC	;WAIT FOR DONE
+	BNE .-4
+	RTS	PC		;THAT'S 8.6 USEC TO CLEAR ONE WORD
+
+CLRCHR:	CLR	A		;CLEARS CHARACTER
+	BR	ADCH1
+ADDCHR:	TST	CTAB(A)		;PUT A CHARACTER ON SCREEN
+	BEQ	FORMAT
+	ADD	KSET,A		;GET THE RIGHT CHARACTER SET
+ADCH1:	TST	BLCC		;IS THIS BLINKING
+	BEQ	PCHR1		;NO
+	CMP	CC,BLCC		;MAYBE
+	BNE	PCHR1
+	CMP	CPOS,BLCPOS
+	BNE	PCHR1
+	CLR	BLCC		;UNBLINK
+PCHR1:	CMP	CPOS,#CHRPL
+	BLT	PCHR
+	SUB	#BYTPL-2,CC
+	CLR	CPOS
+PCHR:	INC	CPOS
+	MOV	CTAB(A),T
+	MOV	CC,TT
+	MOV	#CHRHT,U	;ITERATIONS
+	MOV	CPOS,C
+	BIC	#177760,C	;CHARACTER PHASE
+	MOV	C,A
+	ASL	C		;BYTE ADDRESS
+	MOV	MASKTB(C),C	;MASK
+	MOVB	SHIFTB(A),A	;NUMBER SHIFTS
+	BLT	OVRLAP
+EZCASE:	BIC #300,CCONS
+	MOV CHMASK,CMASK
+	BIC	C,(TT)
+	MOVB	(T)+,B		;BIT PATTERN
+	BEQ	EZCAS1
+	JSR	PC,SHIFTL
+	CLR CMASK
+	BIS CHSET,CCONS
+	MOV	B,(TT)
+EZCAS1:	ADD	#BYTPL,TT
+	DEC	U
+	BGT	EZCASE
+	TST	A
+	BNE	EZCAS2
+	ADD	#2,CC		;NEXT CHARACTER GOES INTO NEXT WORD
+EZCAS2:	RTS	PC
+;HERE IF CHARACTER OVERLAPS WORD
+
+OVRLAP:	PUSH	C
+	CLRB	1(SP)		;LOW ORDER MASK
+	PUSH	C
+	CLRB	(SP)		;HIGH ORDER MASK
+OVRLP1:	BIC #300,CCONS
+	MOV CHMASK,CMASK
+	BIC	2(SP),(TT)
+	BIC	(SP),2(TT)
+	MOVB	(T)+,B
+	BEQ	OVRLP2
+	JSR	PC,SHIFTR
+	CLR CMASK
+	BIS CHSET,CCONS
+	MOV	B,(TT)
+	MOV	C,2(TT)
+OVRLP2:	ADD	#BYTPL,TT
+	DEC	U
+	BGT	OVRLP1
+	ADD	#4,SP
+	ADD	#2,CC
+	RTS	PC
+DPT31:	MOV	#31*2,A
+	BR	ADCH1
+
+DPT33:	MOV	#33*2,A
+	BR	ADCH1
+
+STOP:	HALT
+
+FORMAT:	ASR	A		;GET CHARACTER BACK
+	CMP	A,#10
+	BEQ	BS
+	CMP	A,#11
+	BEQ	TAB
+	CMP	A,#12
+	BEQ	LF
+	CMP	A,#15
+	BEQ	CR
+	SUB	#30,A
+	BLT	STOP
+	CMP	A,#7
+	BGT	STOP
+	ASL	A
+	JMP	@DPTAB(A)
+
+DPTAB:	.WORD FS		;30 RFORWARD SPACE
+	.WORD DPT31		;31 NOT USED
+	.WORD MU		;32 MOVE UP
+	.WORD DPT33		;33 NOT USED
+	.WORD HD		;34 HOME DOWN
+	.WORD HU		;35 HOME UP
+	.WORD CLEOL		;36 CLEAR TO EOL
+	.WORD CLEOF		;37 CLEAR TO EOF
+;SHIFT ROUTINES
+
+SHIFTR:	PUSH	A
+	CLR	C
+SHFTR1:	ASR	B
+	ROR	C
+	INC	A
+	BLT	SHFTR1
+	POP	A
+	RTS	PC
+
+SHIFTL:	PUSH	A
+	BEQ	POPAJ
+	CMP	A,#5
+	BGT	SHFTL2		;SWAB EQUIVALENT TO 10 SHIFTS
+SHFTL1:	ASL	B
+	DEC	A
+	BGT	SHFTL1
+POPAJ:	POP	A
+	RTS	PC
+
+SHFTL2:	SWAB	B		;THERE EIGHT SHIFTS
+	SUB	#10,A
+	BEQ	POPAJ
+	BGT	SHFTL1		;NEED MORE LEFT SHIFTS
+SHFTL3:	ASR	B
+	INC	A
+	BLT	SHFTL3
+	POP	A
+	RTS	PC
+TAB:	JSR	PC,CLRCHR	;AT LEAST ONE SPACE
+TAB1:	BIT	#7,CPOS
+	BEQ	CRTSPC
+	JSR	PC,CLRCHR
+	BR	TAB1
+
+CR:	TST	CPOS		;CARRIAGE RETURN
+	BEQ	CRTSPC
+	JSR	PC,BS1
+	BR	CR
+
+LF:	CMP	CLINE,#CHRLN-1	;LINE FEED
+	BGE	LF1
+LF0:	INC	CLINE
+	ADD	#BYTPL*CHRHT,CC
+CRTSPC:	RTS	PC
+LF1:	SUB	#<CHRLN-1>*BYTPL*CHRHT,CC
+	CMP	CC,#TVLO
+	BLO	HU
+	CLR	CLINE		;WRAP AROUND
+	RTS	PC
+
+HD:	JSR	PC,CR		;HOME DOWN
+HD1:	CMP	CLINE,#CHRLN-1
+	BGE	CRTSPC
+	JSR	PC,LF0
+	BR	HD1
+
+HU:	MOV	#TVLO,CC	;HOME UP
+	CLR	CPOS
+	CLR	CLINE
+	RTS	PC
+
+FS:	CMP	CPOS,#CHRPL-1
+	BGE	CRTSPC
+	INC	CPOS
+	JSR	PC,CPHASE
+	BGT	CRTSPC
+	ADD	#2,CC
+	RTS	PC
+
+BS:	TST	CPOS		;BACK SPACE
+	BEQ	CRTSPC
+BS1:	JSR	PC,CPHASE
+	BGT	BS2
+	SUB	#2,CC
+BS2:	DEC	CPOS
+	RTS	PC
+
+MU:	TST	CLINE		;MOVE UP
+	BEQ	CRTSPC
+	SUB	#BYTPL*CHRHT,CC
+	DEC	CLINE
+	RTS	PC
+
+CLEOL:	TST	BLCC
+	BEQ	CLEOL0
+	CMP	CLINE,BLCLIN
+	BNE	CLEOL0
+	CMP	CPOS,BLCPOS
+	BGT	CLEOL0
+	CLR	BLCC
+CLEOL0:	PUSH	CC		;CLEAR EOL
+	PUSH	CPOS
+	BNE	CLEOL1
+	MOV	#BYTPL-2,B
+	BR	CLEOL5
+CLEOL1:	CMP	CPOS,#CHRPL
+	BGE	CLEOL2		;ALREADY AT END OF LINE
+	JSR	PC,CLRCHR
+	JSR	PC,CPHASE
+	BNE	CLEOL1
+	MOV	#CHRPL,C
+	SUB	CPOS,C
+	CLR	B
+CLEOL4:	CMP	C,#20		;16*<BYTPL-CPOS>/20
+	BLT	CLEOL5
+	SUB	#20,C
+	ADD	#16,B		;ONE CYCLE IS 16 BYTES
+	BR	CLEOL4
+CLEOL5:	MOV	#CHRHT,U
+CLEOL3:	MOV	CC,T		;WHERE TO START CLEARING
+	MOV	T,TT
+	ADD	B,TT
+	BIC #300,CCONS
+	CLR (T)+
+	CMP T,TT
+	BLOS .-4
+	ADD	#BYTPL,CC
+	DEC	U
+	BGT	CLEOL3
+	BR	CLEOL2
+
+CLEOF:	PUSH	CC		;CLEAR EOF
+	PUSH	CPOS
+	PUSH	CLINE
+	TST	BLCC
+	BEQ	CLEOF0
+	CMP	CC,BLCC
+	BHI	CLEOF0
+	CMP	CPOS,BLCPOS
+	BGT	CLEOF0
+	CLR	BLCC
+CLEOF0:	JSR	PC,CLEOL	;CLEAR TO END OF LINE FIRST
+	JSR	PC,CR
+	CMP	CLINE,#CHRLN-1
+	BGE	CLEOF3
+	JSR	PC,LF
+CLEOF1:	MOV	CC,T
+	CMP	T,#TVLO
+	BHIS	CLEOF2
+	MOV	#TVLO,T
+CLEOF2:	MOV #TVHI,TT
+	BIC #300,CCONS
+	CLR (T)+
+	CMP T,TT
+	BLOS .-4
+CLEOF3:	POP	CLINE
+CLEOL2:	POP	CPOS
+	POP	CC
+	RTS	PC
+
+CPHASE:	MOV	CPOS,A
+	BIC	#177760,A
+	TSTB	SHIFTB(A)
+	RTS	PC
+SHIFTB:	.BYTE	0
+	.BYTE	11
+	.BYTE	2
+	.BYTE	-5
+	.BYTE	4
+	.BYTE	-3
+	.BYTE	6
+	.BYTE	-1
+	.BYTE	10
+	.BYTE	1
+	.BYTE	-6
+	.BYTE	3
+	.BYTE	-4
+	.BYTE	5
+	.BYTE	-2
+	.BYTE	7
+
+MASKTB:	177
+	177_11
+	177_2
+	<177_13>!<177_<-5>>
+	177_4
+	<177_15>!<177_<-3>>
+	177_6
+	<177_17>!<177_<-1>>
+	177_10
+	177_1
+	<177_12>!<177_<-6>>
+	177_3
+	<177_14>!<177_<-4>>
+	177_5
+	<177_16>!<177_<-2>>
+	177_7
+.MACRO SYN A,B
+.XLIST
+...'A==...'B
+.LIST
+.ENDM
+
+.MACRO SYNRNG FIRST,N
+.XLIST
+CHRCOD==FIRST
+.REPT N
+SYN \<CHRCOD+200>,\CHRCOD
+CHRCOD==CHRCOD+1
+.ENDR
+.LIST
+.ENDM
+
+.IRP A,<0,3>
+SYN \<A+200>,A
+.ENDM
+
+SYNRNG 7,7
+SYNRNG 17,3
+SYNRNG 25,54
+SYNRNG 133,6
+SYNRNG 173,6
+SYN 217,7
+SYN 300,100
+
+;THE FOLLOWING ARE IDENTICAL FOR BOTH UPPER AND LOWER CASE
+
+.IRP A,<A,C,E,M,O,P,T,Y,X>
+SYN \<''A+200>,\<''A>
+SYN \<''A+240>,\<''A+40>
+.ENDM
+
+;THE FOLLOWING ARE UPPER CASE COMPATIBLE ONLY
+
+.IRP A,<B,H,K>
+SYN \<''A+200>,\<''A>
+.ENDM
+
+	.MACRO FOO A
+	.WORD ...'A
+	.ENDM
+
+CTAB:	.REPT 200
+	.NLIST
+	FOO \.RPCNT
+	.LIST
+	.ENDR
+
+ZZ==.
+.=CTAB+<10*2>
+	.WORD	0	;10 BACK SPACE
+	.WORD	0	;11 TAB
+	.WORD	0	;12 LF
+
+.=CTAB+<15*2>
+	.WORD	0	;15 CR
+
+.=CTAB+<30*2>
+	.WORD	0	;30 FORWARD SPACE
+.=.+2			;31 NOT USED
+	.WORD	0	;32 MOVE UP
+.=.+2			;33 NOT USED
+	.WORD	0	;34 HOME DOWN
+	.WORD	0	;35 HOME UP
+	.WORD	0	;36 CLEAR EOL
+	.WORD	0	;37 CLEAR EOF
+.=ZZ
+.MACRO	FONT A
+.NLIST
+....==0
+.IF2
+...==200
+
+.IRPC	CHR,A
+...==..._<-1>
+.IF NB	CHR
+....==....!...
+.ENDC
+.ENDM
+
+.IF Z	...
+ERROR	\CURCHR
+.ENDC
+.ENDC
+.BYTE	....
+.LIST
+.ENDM
+
+.MACRO CDEF A
+.NLIST
+CURCHR==''A
+CDEF1	\CURCHR
+.LIST
+.ENDM
+
+.MACRO	CDEF1 A
+.NLIST
+.XCREF ...'A
+CURCHR==A
+...'A==.
+.BYTE	0
+.BYTE	0
+.LIST
+.ENDM
+
+.MACRO	ERROR NUM
+.ERROR	;FONT LOSSAGE NUM
+.ENDM
+;THESE TECO MACROS HELP A LITTLE WHEN DEFINING FONTS
+.REPT 0
+;REGISTER M
+.U1ICDEF1 
+FONT <>
+FONT <>
+FONT <>
+FONT <>
+FONT <>
+FONT <>
+FONT <>
+FONT <>
+FONT <>
+FONT <>
+
+Q1JL6C
+;REGISTER L
+L6C
+;REGISTER B
+I     
+;REGISTER S
+I*****
+.ENDR
+.XLIST
+CDEF1 0
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 1
+FONT <     >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <* * *>
+FONT < *** >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF1 2
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < ** *>
+FONT <*  * >
+FONT <*  * >
+FONT <*  * >
+FONT < ** *>
+FONT <     >
+FONT <     >
+
+CDEF1 3
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <**** >
+FONT <*   *>
+FONT <**** >
+FONT <*    >
+FONT <*    >
+
+CDEF1 4
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <  *  >
+FONT < * * >
+FONT <*   *>
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 5
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*****>
+FONT <    *>
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 6
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <  ** >
+FONT < *   >
+FONT < *** >
+FONT < *   >
+FONT <  ** >
+FONT <     >
+FONT <     >
+
+CDEF1 7
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*****>
+FONT < * * >
+FONT < * * >
+FONT < * * >
+FONT < * * >
+FONT <     >
+FONT <     >
+
+CDEF1 10
+FONT <     >
+FONT <     >
+FONT <*    >
+FONT <*    >
+FONT < *   >
+FONT <  *  >
+FONT < * * >
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF1 11
+FONT <***  >
+FONT < *   >
+FONT < *   >
+FONT < *   >
+FONT <     >
+FONT <  ** >
+FONT <  * *>
+FONT <  ** >
+FONT <  * *>
+FONT <  ** >
+
+CDEF1 12
+FONT <*    >
+FONT <*    >
+FONT <*    >
+FONT <***  >
+FONT <     >
+FONT <  ***>
+FONT <  *  >
+FONT <  ** >
+FONT <  *  >
+FONT <     >
+
+CDEF1 13
+FONT <     >
+FONT <   * >
+FONT <  * *>
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <* *  >
+FONT < *   >
+FONT <     >
+
+CDEF1 14
+FONT <     >
+FONT <  *  >
+FONT <  *  >
+FONT <*****>
+FONT <  *  >
+FONT <  *  >
+FONT <*****>
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 15
+FONT < *** >
+FONT <*    >
+FONT <*    >
+FONT < *** >
+FONT <     >
+FONT < *** >
+FONT < *  *>
+FONT < *** >
+FONT < *  *>
+FONT < *  *>
+
+CDEF1 16
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < * * >
+FONT <* * *>
+FONT <* * *>
+FONT < * * >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 17
+FONT <     >
+FONT < **  >
+FONT <   * >
+FONT <    *>
+FONT < ****>
+FONT <*   *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF1 20
+FONT <     >
+FONT <     >
+FONT < ****>
+FONT <*    >
+FONT <*    >
+FONT <*    >
+FONT < ****>
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 21
+FONT <     >
+FONT <     >
+FONT <**** >
+FONT <    *>
+FONT <    *>
+FONT <    *>
+FONT <**** >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 22
+FONT <     >
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 23
+FONT <     >
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 24
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT <*****>
+FONT <*   *>
+FONT < * * >
+FONT < * * >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF1 25
+FONT <     >
+FONT <*****>
+FONT <    *>
+FONT <    *>
+FONT < ****>
+FONT <    *>
+FONT <    *>
+FONT <*****>
+FONT <     >
+FONT <     >
+
+CDEF1 26
+FONT <     >
+FONT <     >
+FONT < *** >
+FONT <** **>
+FONT <* * *>
+FONT <** **>
+FONT < *** >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 27
+FONT <     >
+FONT <  *  >
+FONT <   * >
+FONT <*****>
+FONT <   * >
+FONT <  *  >
+FONT < *   >
+FONT <*****>
+FONT < *   >
+FONT <  *  >
+
+CDEF1 30
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*****>
+
+CDEF1 31
+FONT <     >
+FONT <     >
+FONT <  *  >
+FONT <   * >
+FONT <*****>
+FONT <   * >
+FONT <  *  >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 32
+FONT < ** *>
+FONT <* ** >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 33
+FONT <     >
+FONT <    *>
+FONT <   * >
+FONT <*****>
+FONT <  *  >
+FONT <*****>
+FONT < *   >
+FONT <*    >
+FONT <     >
+FONT <     >
+
+CDEF1 34
+FONT <     >
+FONT <   * >
+FONT <  *  >
+FONT < *   >
+FONT <  *  >
+FONT <   * >
+FONT <     >
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF1 35
+FONT <     >
+FONT < *   >
+FONT <  *  >
+FONT <   * >
+FONT <  *  >
+FONT < *   >
+FONT <     >
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF1 36
+FONT <     >
+FONT <     >
+FONT <*****>
+FONT <     >
+FONT <*****>
+FONT <     >
+FONT <*****>
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 37
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*   *>
+FONT < * * >
+FONT <  *  >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF < >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF <!>
+FONT <     >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <     >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF <">
+FONT < * * >
+FONT < * * >
+FONT < * * >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF <#>
+FONT <     >
+FONT <     >
+FONT < * * >
+FONT <*****>
+FONT < * * >
+FONT < * * >
+FONT <*****>
+FONT < * * >
+FONT <     >
+FONT <     >
+
+CDEF <$>
+FONT <  *  >
+FONT < *** >
+FONT <* * *>
+FONT <* *  >
+FONT < *** >
+FONT <  * *>
+FONT <* * *>
+FONT < *** >
+FONT <  *  >
+FONT <     >
+
+CDEF <%>
+FONT <     >
+FONT <*****>
+FONT <**  *>
+FONT <   * >
+FONT <  *  >
+FONT < *   >
+FONT <*  **>
+FONT <*  **>
+FONT <     >
+FONT <     >
+
+CDEF <&>
+FONT <     >
+FONT < *   >
+FONT <* *  >
+FONT <* *  >
+FONT < *   >
+FONT <* * *>
+FONT <*  * >
+FONT < ** *>
+FONT <     >
+FONT <     >
+
+CDEF <'>
+FONT < **  >
+FONT < **  >
+FONT <**  >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF <(>
+FONT <     >
+FONT <    *>
+FONT <   * >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <   * >
+FONT <    *>
+FONT <     >
+FONT <     >
+
+CDEF <)>
+FONT <     >
+FONT <*    >
+FONT < *   >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT < *   >
+FONT <*    >
+FONT <     >
+FONT <     >
+
+CDEF <*>
+FONT <     >
+FONT <  *  >
+FONT <* * *>
+FONT < *** >
+FONT <  *  >
+FONT < *** >
+FONT <* * *>
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF <+>
+FONT <     >
+FONT <     >
+FONT <  *  >
+FONT <  *  >
+FONT <*****>
+FONT <  *  >
+FONT <  *  >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF <,>
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < **  >
+FONT < **  >
+FONT <**  >
+FONT <     >
+
+CDEF <->
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*****>
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF <.>
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < **  >
+FONT < **  >
+FONT <     >
+FONT <     >
+
+CDEF </>
+FONT <     >
+FONT <     >
+FONT <    *>
+FONT <   * >
+FONT <  *  >
+FONT < *   >
+FONT <*    >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF 0
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*  **>
+FONT <* * *>
+FONT <**  *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF 1
+FONT <     >
+FONT <  *  >
+FONT < **  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF 2
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <    *>
+FONT <   * >
+FONT <  *  >
+FONT < *   >
+FONT <*****>
+FONT <     >
+FONT <     >
+
+CDEF 3
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <    *>
+FONT <  ** >
+FONT <    *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF 4
+FONT <     >
+FONT <   * >
+FONT <  ** >
+FONT < * * >
+FONT <*  * >
+FONT <*****>
+FONT <   * >
+FONT <   * >
+FONT <     >
+FONT <     >
+
+CDEF 5
+FONT <     >
+FONT <*****>
+FONT <*    >
+FONT <**** >
+FONT <    *>
+FONT <    *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF 6
+FONT <     >
+FONT <  ** >
+FONT < *   >
+FONT <*    >
+FONT <**** >
+FONT <*   *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF 7
+FONT <     >
+FONT <*****>
+FONT <    *>
+FONT <   * >
+FONT <   * >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF 8
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*   *>
+FONT < *** >
+FONT <*   *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF 9
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*   *>
+FONT < ****>
+FONT <    *>
+FONT <   * >
+FONT < **  >
+FONT <     >
+FONT <     >
+
+CDEF <:>
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < **  >
+FONT < **  >
+FONT <     >
+FONT < **  >
+FONT < **  >
+FONT <     >
+FONT <     >
+
+CDEF <;>
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < **  >
+FONT < **  >
+FONT <     >
+FONT < **  >
+FONT < **  >
+FONT <**   >
+FONT <     >
+
+CDEF1 74
+FONT <     >
+FONT <     >
+FONT <   * >
+FONT <  *  >
+FONT < *   >
+FONT <  *  >
+FONT <   * >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF <=>
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*****>
+FONT <     >
+FONT <*****>
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF1 76
+FONT <     >
+FONT <     >
+FONT < *   >
+FONT <  *  >
+FONT <   * >
+FONT <  *  >
+FONT < *   >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF <?>
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <   * >
+FONT <  *  >
+FONT <  *  >
+FONT <     >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF <@>
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <* ***>
+FONT <* * *>
+FONT <* ***>
+FONT <*    >
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF A
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*   *>
+FONT <*****>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF B
+FONT <     >
+FONT <**** >
+FONT <*   *>
+FONT <*   *>
+FONT <**** >
+FONT <*   *>
+FONT <*   *>
+FONT <**** >
+FONT <     >
+FONT <     >
+
+CDEF C
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*    >
+FONT <*    >
+FONT <*    >
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF D
+FONT <     >
+FONT <**** >
+FONT < *  *>
+FONT < *  *>
+FONT < *  *>
+FONT < *  *>
+FONT < *  *>
+FONT <**** >
+FONT <     >
+FONT <     >
+
+CDEF E
+FONT <     >
+FONT <*****>
+FONT <*    >
+FONT <*    >
+FONT <**** >
+FONT <*    >
+FONT <*    >
+FONT <*****>
+FONT <     >
+FONT <     >
+
+CDEF F
+FONT <     >
+FONT <*****>
+FONT <*    >
+FONT <*    >
+FONT <**** >
+FONT <*    >
+FONT <*    >
+FONT <*    >
+FONT <     >
+FONT <     >
+
+CDEF G
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*    >
+FONT <*    >
+FONT <*  **>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF H
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <*****>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF I
+FONT <     >
+FONT < *** >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF J
+FONT <     >
+FONT <    *>
+FONT <    *>
+FONT <    *>
+FONT <    *>
+FONT <    *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF K
+FONT <     >
+FONT <*   *>
+FONT <*  * >
+FONT <* *  >
+FONT <**   >
+FONT <* *  >
+FONT <*  * >
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF L
+FONT <     >
+FONT <*    >
+FONT <*    >
+FONT <*    >
+FONT <*    >
+FONT <*    >
+FONT <*    >
+FONT <*****>
+FONT <     >
+FONT <     >
+
+CDEF M
+FONT <     >
+FONT <*   *>
+FONT <** **>
+FONT <* * *>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF N
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT <**  *>
+FONT <* * *>
+FONT <*  **>
+FONT <*   *>
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF O
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF P
+FONT <     >
+FONT <**** >
+FONT <*   *>
+FONT <*   *>
+FONT <**** >
+FONT <*    >
+FONT <*    >
+FONT <*    >
+FONT <     >
+FONT <     >
+
+CDEF Q
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <* * *>
+FONT <*  * >
+FONT < ** *>
+FONT <     >
+FONT <     >
+
+CDEF R
+FONT <     >
+FONT <**** >
+FONT <*   *>
+FONT <*   *>
+FONT <**** >
+FONT <* *  >
+FONT <*  * >
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF S
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*    >
+FONT < *** >
+FONT <    *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF T
+FONT <     >
+FONT <*****>
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF U
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF V
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT < * * >
+FONT < * * >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF W
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <* * *>
+FONT <** **>
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF X
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT < * * >
+FONT <  *  >
+FONT < * * >
+FONT <*   *>
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF Y
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT < * * >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF Z
+FONT <     >
+FONT <*****>
+FONT <    *>
+FONT <   * >
+FONT <*****>
+FONT < *   >
+FONT <*    >
+FONT <*****>
+FONT <     >
+FONT <     >
+
+CDEF <[>
+FONT <  ***>
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  ***>
+FONT <     >
+
+CDEF <\>
+FONT <     >
+FONT <     >
+FONT <*    >
+FONT < *   >
+FONT <  *  >
+FONT <   * >
+FONT <    *>
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF <]>
+FONT <***  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <***  >
+FONT <     >
+
+CDEF <^>
+FONT <     >
+FONT <  *  >
+FONT < *** >
+FONT <* * *>
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF <_>
+FONT <     >
+FONT <     >
+FONT <  *  >
+FONT < *   >
+FONT <*****>
+FONT < *   >
+FONT <  *  >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF <`>
+FONT <  ** >
+FONT <  ** >
+FONT <   **>
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <     >
+
+CDEF a
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < *** >
+FONT <    *>
+FONT < ****>
+FONT <*   *>
+FONT < ****>
+FONT <     >
+FONT <     >
+
+CDEF b
+FONT <     >
+FONT <*    >
+FONT <*    >
+FONT <**** >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <**** >
+FONT <     >
+FONT <     >
+
+CDEF c
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*    >
+FONT <*    >
+FONT < ****>
+FONT <     >
+FONT <     >
+
+CDEF d
+FONT <     >
+FONT <    *>
+FONT <    *>
+FONT < ****>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT < ****>
+FONT <     >
+FONT <     >
+
+CDEF e
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <**** >
+FONT <*    >
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF f
+FONT <     >
+FONT <  ** >
+FONT < *  *>
+FONT < *   >
+FONT <***  >
+FONT < *   >
+FONT < *   >
+FONT < *   >
+FONT <     >
+FONT <     >
+
+CDEF g
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT < ****>
+FONT <    *>
+FONT < *** >
+
+CDEF h
+FONT <     >
+FONT <*    >
+FONT <*    >
+FONT <**** >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF i
+FONT <     >
+FONT <     >
+FONT <  *  >
+FONT <     >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF j
+FONT <     >
+FONT <     >
+FONT <    *>
+FONT <     >
+FONT <    *>
+FONT <    *>
+FONT <    *>
+FONT <    *>
+FONT <*   *>
+FONT < *** >
+
+CDEF k
+FONT <     >
+FONT <*    >
+FONT <*    >
+FONT <*   *>
+FONT <*  * >
+FONT <***  >
+FONT <*  * >
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF l
+FONT <     >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF m
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <** * >
+FONT <* * *>
+FONT <* * *>
+FONT <* * *>
+FONT <* * *>
+FONT <     >
+FONT <     >
+
+CDEF n
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <* ** >
+FONT <**  *>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF o
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF p
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <**** >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <**** >
+FONT <*    >
+FONT <*    >
+
+CDEF q
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT < ****>
+FONT <    *>
+FONT <    *>
+
+CDEF r
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <* ** >
+FONT <**  *>
+FONT <*    >
+FONT <*    >
+FONT <*    >
+FONT <     >
+FONT <     >
+
+CDEF s
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < ****>
+FONT <*    >
+FONT < *** >
+FONT <    *>
+FONT <**** >
+FONT <     >
+FONT <     >
+
+CDEF t
+FONT <     >
+FONT <  *  >
+FONT <  *  >
+FONT <*****>
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <   **>
+FONT <     >
+FONT <     >
+
+CDEF u
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF v
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT < * * >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF w
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT <* * *>
+FONT <* * *>
+FONT < * * >
+FONT <     >
+FONT <     >
+
+CDEF x
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*   *>
+FONT < * * >
+FONT <  *  >
+FONT < * * >
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF y
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT < * * >
+FONT <  *  >
+FONT < *   >
+FONT <*    >
+
+CDEF z
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*****>
+FONT <   * >
+FONT < *** >
+FONT < *   >
+FONT <*****>
+FONT <     >
+FONT <     >
+
+CDEF1 173
+FONT <    *>
+FONT <   * >
+FONT <   * >
+FONT <   * >
+FONT <  *  >
+FONT <   * >
+FONT <   * >
+FONT <   * >
+FONT <    *>
+FONT <     >
+
+CDEF1 174
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+FONT <  *  >
+
+CDEF1 175
+FONT <*    >
+FONT < *   >
+FONT < *   >
+FONT < *   >
+FONT <  *  >
+FONT < *   >
+FONT < *   >
+FONT < *   >
+FONT <*    >
+FONT <     >
+
+CDEF1 176
+FONT <     >
+FONT <  *  >
+FONT <  *  >
+FONT < * * >
+FONT <*   *>
+FONT < * * >
+FONT <  *  >
+FONT <  *  >
+FONT <     >
+FONT <     >
+
+CDEF1 177
+FONT <******>
+FONT <******>
+FONT <******>
+FONT <******>
+FONT <******>
+FONT <******>
+FONT <******>
+FONT <******>
+FONT <******>
+FONT <******>
+
+CDEF1 322
+FONT <     >
+FONT < ****>
+FONT <*   *>
+FONT <*   *>
+FONT < ****>
+FONT <  * *>
+FONT < *  *>
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF1 362
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < ****>
+FONT <*   *>
+FONT < ****>
+FONT < *  *>
+FONT <*   *>
+FONT <     >
+FONT <     >
+
+CDEF1 332
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <    *>
+FONT <*****>
+FONT <    *>
+FONT <*   *>
+FONT < *** >
+FONT <     >
+FONT <     >
+
+CDEF1 372
+FONT <     >
+FONT <     >
+FONT <     >
+FONT < *** >
+FONT <*   *>
+FONT <  ***>
+FONT <*   *>
+FONT < ***>
+FONT <     >
+FONT <     >
+
+CDEF1 316
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT <*   *>
+FONT < ****>
+FONT <    *>
+FONT <    *>
+FONT <    *>
+FONT <     >
+FONT <     >
+
+CDEF1 356
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*   *>
+FONT <*   *>
+FONT < ****>
+FONT <    *>
+FONT <    *>
+FONT <     >
+FONT <     >
+
+CDEF1 325
+FONT <     >
+FONT <*  * >
+FONT <* * *>
+FONT <* * *>
+FONT <*** *>
+FONT <* * *>
+FONT <* * *>
+FONT <*  * >
+FONT <     >
+FONT <     >
+
+CDEF1 365
+FONT <     >
+FONT <     >
+FONT <     >
+FONT <*  * >
+FONT <* * *>
+FONT <*** *>
+FONT <* * *>
+FONT <*  * >
+FONT <     >
+FONT <     >
+
+CDEF1 327
+FONT <     >
+FONT <* * *>
+FONT <* * *>
+FONT <* * *>
+FONT <* * *>
+FONT <* * *>
+FONT <* * *>
+FONT <*****>
+FONT <     >
+FONT <     >
+
+.LIST
+.EVEN
+
+CLINE:	0	;CURRENT LINE (STARTS AT 0)
+CC:	0	;WORD WHERE NEXT CHARACTER GOES
+CPOS:	0	;# CHARACTERS ON THIS LINE
+ACTCHR:	0	;# CHARACTERS BUFFERED
+GETCC:	0	;WHERE TO GET NEXT CHARACTER
+PUTCC:	0	;WHERE TO PUT NEXT CHARACTER
+OCSR:	0	;OLD CONSOLE SWITCH REGISTER
+KSET:	0	;400 GIVES YOU OTHER SET
+
+;INTERUPT LEVEL STORAGE
+
+TICKS:	0	;# CLOCK INTERUPTS TAKEN
+BLINK:	0	;# TICKS LEFT BEFORE BLINK
+BLCC:	0	;WHERE IT'S HAPPENIN', BABY!
+BLCPOS:	0
+BLCLIN:	0
+CHMASK:	0	;ALU FUNCTION TO MASK FOR CHARACTER
+CHSET:	0	;ALU FUNCTION TO PUT CHARACTER IN MEMORY
+
+BUF=.
+.=.+BUFSIZ
+BUFEND==.
+
+PATCH=.
+
+.END GO
+

@@ -1,0 +1,201 @@
+                .stitl tv input routines
+TVIN:	cmp buffst, buffst+2	;is it the end of the buffer?
+	beq inmod		;yes, which means input char from tv
+	movb @buffst, d		;else return next char
+	inc buffst		;inc the buffer pointer
+	rts pc
+inmod:	save a,b,c
+	sub #4,s		;push two words on the stack
+	mov ttcap,-(p)
+	bit #tvset*400,(p)
+	$invok			;get current position on tv
+	mov (p)+,buffst		;store tvline
+	mov (p)+, buffst+2	;store tvcur
+	sub #4,s		;push 2 word on s
+	mov ttcap,-(p)
+	bit #tvfrn*400,(p)
+	$invok			;get the #of bits per char
+	tst -(p)		;pop # lines char
+	mov -(p),c
+	mov #576.,a		;put total #of bits per tvline in a
+	clr b
+	div c,a
+	mov b, tvchar		;number of char per line
+	mov buffst+4, a		;reset a & b to begining of buffer
+	mov a, b
+rloop:	mov ttcap, -(p)
+	$byti			;input char
+	cmp (p), #40		;is it a control char
+	blt cntrl		;yes,br to find out which
+nchar:	clr c			;reset super if it was set
+	cmp b,bufend		;at end of buffer?
+	beq rloop		;yes so just input chars until the situation changes
+	cmp a,b			;are we at the end of the buffer?
+	bne middle		;no,have to move whole buffer
+	movb (p),(a)		;put char in buffer
+	inc a 			;move pointers
+	inc b
+	movb ttcap,-(p)		;output char
+	$byto
+	br rloop		;get next char
+middle:	jsr pc,clear		;clear screen from a to end of buffer
+	mov b,d
+bufshf:	movb -1(d),(d)		;move the buffer over one
+	dec d
+	cmp d,a
+	bne bufshf
+	movb (p),(a)		;insert the char in the space that was made
+wloop:	clr -(p)		;have to push stack now next instr is working with byte
+	movb (d),-(p)		;output the char that was just entered
+	mov ttcap,-(p)		;and all the char following it until the
+	$btyo			;end of the buffer
+	inc d
+	cmp d,b
+	bne wloop
+	inc a
+	inc b
+
+cntrl:	cmp (p),#super		;is it a super?
+	bne trd			;no,br to next test
+	tst (p)+		;pop char off stack
+	tst c			;is this the second super?
+	bgt dsuper
+	mov #1,c		;set "super" to 1
+	br rloop		;get next char
+dsuper;	mov #-1,c
+	br rloop		;get next char
+
+trd:	cmp (p),#dr		;is it a right delete?
+	bne tra			;no
+	tst (p)+		;pop char
+	mov a,d			;mark the current buffer position
+	br ra			;now move the cusor like it was a rarrow
+tra:	cmp (p),#r
+	bne trd			;br to see if a left delete
+	tst (p)+		;pop char
+	clr d			;set d to 0 so we know its a move not a delete
+ra:	tst c			;is it a dsuper
+	bge ra1			;no
+	mov b,a			;put the pointer to the buffer end
+	br movcus		;fix up the display
+ra1:	cmp a,b			;end of buffer?
+	beq movcus		;yes so we are finished moving the cusor
+	inc a			;move the cusor over one
+	tst c			;was a super hit before?
+	beq movcus		; no so we are done
+	bit #wsf,@.dtbl(a)	;is it a word  separating char
+	beq movcus		;yes so we are done
+	br ar1			;not done so try again
+
+tld:	cmp (p),#dl		;same as above except moves cusor left
+	bne tla
+	tst (p)+
+	mov a,d
+	br la
+tla:	cmp (p),#l
+	bne tcr			;maybe it a cr
+	tst (p)+
+	clr d
+la:	tst c
+	bge la1
+	mov #buffst+4,a		;no the end cond is the beg of the buf
+	br movcus
+	dec a			;mov cusor in opposite direction
+	tst c
+	beq movcus
+	bit #wsf,@.dtbl(a)
+	beq movcus
+	br la1
+
+tcr:	cmp (p),#cr
+	bne nchar		;it is not a special char so treat it normally
+	movb (p),(b)		;put the cr at the end of the line
+	inc b			;add one to the total # of char
+	mov b,buffst+2		;store the end of the buffer in buffst+2
+	mov #buffst+4,buffst	;store beginning of buffer in buffst
+	br tvin			;now give the first char back and then return
+
+
+				;movcus takes its inputs form reg a,b,and d
+				;if d is 0 then movcus moves the cusor from
+				;where ever it is and puts it at a.If d is not
+				;0 then movcus assumes that d is also a pointer
+				;to the buffer,and it maps the rightmost pointer
+				;into the other pointer and the fixes up the
+				;display. By doing this it deletes the buffer
+				;between a and d
+
+movcus:	tst d			;are we just moving the cusor?
+	beq mocus		;yes
+	mov d,c			;save this pointer
+	cmp a,d			;is a greater than d
+	bge update		;yes so skip switch
+	mov a,c			;otherwise switch a and d making sure c is the smaller
+	mov d,a
+	mov c,d
+update:	cmp a,b			;end of buffer
+	beq finup
+	movb (a)+,(b)+		;put the char a points to in b and inc both
+	br update
+finup:	mov c,a			;since c is where the cusor should be make a c
+	jsr pc,move		;move cusor to correct position
+	jsr pc,clear		;clear from where the cusor is to the end of the buffer
+	mov a,d
+oloop:	cmp d,b			;are we at the end of the buffer
+	beq mocus		;yes so put the cusor where it belongs
+	clr -(p)		;push stack now,since on the next instr would dec p 1
+	movb (d)+,(p)		;put the char to be output on the stack
+	mov ttcap,-(p)
+	$btyo			;output char
+	br oloop
+mocus:	jsr pc,move		;put cusor in right place
+	clr c			;so the super bit is rest
+	jmp rloop		;go back and get the next char
+
+
+				;the subroutine move moves the displays cusor so 
+				;it points to the same char as the buffer pointer (a)
+				;is pointing to.It updates the tv
+move:	mov a,c
+	sub #buffst+4,c		;put the position of the buf pointer in c
+	add buffst+2,c		;add the position of the first char in the buf to c
+	clr d
+	div tvchar,c		;c is the position along a line where the cusor should
+	add buffst,d		;d is the tv line the cusor should be on
+	mov c,-(p)
+	mov d -(p)
+	mov ttcap,-(p)
+	bit #tvset*400+prwrt,(p)
+	$invok			;execute a tv set to put cusor where it should be
+	rts pc			;return
+
+
+				;the subroutine clear clears the tv display from
+				;cusor position to the end of the buffer,even if 
+				;the buffer is more than one screen line.
+clear:	mov a,c
+	sub #buffst+4,c		;number of char in the buffer before the cusor
+	clr d
+	div tvchar,c
+	mov d,-(p)		;number of tv screenlines -1 before cusor.
+	mov b,c
+	sub #buffst+4,c		;number of char in buffer
+	clr d
+	div tvline,c		;d has number of tv screen lines -1 
+	sub (p),d		;d is the number of lines to erase after current line
+	mov (p)+,c
+	add buffst,c		;c is the current line number
+cline:	mov #38,-(p)		;#38 is the code for erase to end of a line
+	mov ttcap,-(p)
+	$btyo			;clears to the end of the line
+	dec d			;are we done
+	blt cdone		;yes
+	inc c			;move to next line
+	clr -(p)		;move a zero for the char position
+	mov c,-(p)		;move the number of the next line to be erase
+	mov ttcap,-(p)
+	bit #tvset*400+ptwrt,(p)
+	$invok			;move the cusor to the beginning of next line
+	br cline
+cdone:	jsr pc,move		;put cusor back where you got it
+	rts pc			;and you are done

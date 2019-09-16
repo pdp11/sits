@@ -1,0 +1,235 @@
+.xgp
+.squish
+.font 0 fonts;30vr
+.font 1 rjl;crturz
+.font 2 fonts;30vri
+.font 3 fonts;30fg
+.double
+.ce
+Proposed TV Software for the LOGO System
+.ce
+Ron Lebel
+1B0
+.fill
+	Now that SITS is almost able to run LOGO without crashing
+instantly, its necessary to decide exactly how the TV displays are
+going to work with LOGO. Obviously, we will only be able to do relatively
+simple things immediately, in order to insure that we at least
+have something working in the next month or so, but hopefully
+the stuff we do write will be able to be extended to higher
+levels of wonderfullness after that. Therefore I want to try to
+establish what the ultimate implementation might be, so we
+can work toward that. This paper suggests my view of what features
+are desirable and reasonably implementable. I would like to get
+some feedback on these ideas.
+.br
+FONTS
+.br
+	There will probably be at least two fonts for text display. One
+of these will be the standard font used on the AI PDP10 TV displays,
+and the other will be a large font stolen from the XGP fonts.
+It should be possible to switch fonts at any time, with the restriction
+that the previous contents of the screen will be lost (cleared)
+when the font is changed. It would
+be fairly easy to allow lots of different fonts, except that the
+storage requirements for each font will be rather large, and a new
+set of routines may be required for each different width font.
+The large font will be exactly 16 bits wide; larger fonts than that would
+be painful to implement. Variable width fonts would cause great
+problems. The number of lines displayed, and the number of characters
+on each line will obviously vary with the size of the font. It
+will probably be possible to experiment with different fonts while
+the system is running, provided they are of an implemented width.
+.br
+MODES
+.br
+	There will be several modes in which the console can be in.
+Normally the console displays the default screen. Initially the
+default screen is a text only display which scrolls (that is, when the
+screen gets full the top N lines are flushed and the remaining lines
+are all moved up N line positions). The other mode the default screen can
+be in is splitscreen mode. In splitscreen mode part of the screen
+is the turtle display area and the remainder of the screen is the
+text area. The text area could be a scrolling area, but it would
+be much easier to make it a wraparound area (when the bottom of the
+text area is reached, the cursor returns to the top line of the text
+area). All of this should sound very familiar to anyone who has
+used LLOGO.
+	The alternative to the default screen is edit mode.
+In edit mode the whole screen
+is occupied with displaying a procedure which is being edited.
+Edit mode would be entered by typeing EDIT FOO and exited
+by typing the 2do it0 or 2stop0 key. The default screen that was displayed
+before the edit command was given is saved and restored after
+the 2do it0 key is typed. This has the disadvantage that
+the just-edited procedure cannot be seen at the same time
+as the other image, but has the advantage that the first screenfull
+doesn't get cluttered by the editing. If one wants to see the
+procedure on the default screen it can be displayed with PRINTOUT.
+.BR
+LINE AND PROCEDURE EDITING
+.BR
+	When typing in a line on the default screen,
+that line can be edited; when in edit mode
+all of the lines of the procedure maybe be edited. This, of course,
+is just like things are in the current 11LOGO. Unlike the
+way things are now, all editing will be done "in place", that
+is, what you are editing will always appear on your screen in
+its current form. This is exactly like control-R mode in ITS
+TECO.
+Note that line editing is a subset of procedure editing.
+While editing a procedure, you can move between lines of the
+procedure and edit each of the lines; the commands for
+editing each line are exactly the same as the ones for editing a
+line being typed in on the default screen.
+Like control-R mode in TECO, most characters are inserted immediately
+into the line being edited at the current cursor postion.
+The six arrow keys (right, left, up, down, right rubout and left
+rubout) and the 2super0 key are the editing command keys.
+The up and down keys only have effect when editing a procedure.
+In edit mode, they permit you to move between lines; typing an
+up or down arrow not prefixed by 2super0 moves one line. If the
+arrow is prefixed by 2super0 the cursor moves <number of lines which
+can fit on screen>/4 lines.
+If the procedure is too big for the screen the portion of it which
+is displayed is determined by the position of the edit cursor;
+as the cursor is brought toward the bottom of the screen the
+procedure is scrolled up if there are more lines which are not displayed.
+The right and left arrow keys move the cursor about on the line.
+When they are not prefixed by 2super0, they move the cursor one
+character postion. When they are prefixed by 2super0, the move over
+one word. The left and right rubout arrow keys rubout either words
+or characters, depending on whether they are prefixed by 2super0 or not.
+The editing of a line
+or procedure is terminated by typing the 2do it0 key. In the
+case of a line the line is then executed; in the case of
+a procedure edit mode is exited.
+While typing a line the 2stop0 key causes the line being typed
+to be flushed. While editing a procedure the 2stop0 key causes
+the edit to be terminated, and the procedure definition is not modified.
+.br
+LINES AND LINE NUMBERS
+.br
+	Currently separations between lines are very important:
+they delimit the scope of an IF or an UNTIL, terminate the
+scan for arguments and are treated as barriers when editing.
+Each line of a procedure requires its own label, the line number.
+I propose to reduce the importance of the line distinction.
+As already mentioned, moving between lines when editing a
+procedure is very easy. As far as editing is concerned,
+2new line0 characters are very much like spaces, except that
+their effect is in the Y, rather than the X axis.
+A more serious problem is that of terminating argument
+scans and controlling the scope of IF and UNTIL. If we
+simply treat 2new line0 as a space, bugs will become harder
+to find, because missing arguments on one line will be
+gobbled from the next line. Even worse, there is no way
+to terminate the scope of an IF, so the whole procedure
+becomes the scope of the IF! Therefore, 2new line0 will
+normally terminate the scope of an IF, but if the next
+line begins with a tab the scope of the IF (or the argument
+scan or whatever) is not terminated. This allows more elegant
+two-dimensional structures:
+.single
+.nofill
+.sp
+.block 7
+3TO FAC :N
+IF :N=0
+                OUTPUT 1
+        ELSE
+                OUTPUT :N
+                        *
+                        FAC :N-1
+.sp
+0(this is admittedly a perverted example)
+.sp
+.double
+.fill
+Note that there is no line number. Line numbers will be replaced
+by line labels, when it is necessary to refer to a line for the purpose
+of a go:
+.nofill
+.single
+.block 7
+3TO LOOP :A :B
+LOOP: FOOBAR :A
+      "A _ :A-1
+      IF NOT :A=0 GO "LOOP
+  LP: MUMBLE :B
+      "B _ :B-1
+      IF NOT :A=0 GO "LP
+0
+.sp
+.double
+.FILL
+The whole procedure, except for the title line, is indented enough
+to display the longest label on each line.
+	The remaining major problem that I can think of is that
+of compatiblity with old style TTY consoles. The solutions are
+kludges. Procedures are writen out to files with sequentially assigned
+line numbers; 2new line-tab0 combinations are represented as some
+magic characters, so that the whole thing is on one TTY line.
+This is terrible.
+.br
+MAGIC MOBY SCROLLING
+.br
+1A0
+.BR
+	It would be nice to have some way to keep a record of the
+whole console session and allow the user to return to and retry
+anything he tried before. PARC theoretically has such a feature
+available to SMALLTALK users, but I have not seen it and have
+no idea how it works. There are many problems here, not the
+least of which is the user interface. If the user wants to
+return to a point 20 pages of back, how can he specify where he
+wants to go? About the only reasonable commands seem to be
+of the form "go back N lines" or "go back N pages" but both
+of these are inadequate if one wants to go back very far.
+Another problem is the amount of storage required to save both the
+input and output. If the whole console session is saved it is
+easy to imagine that 100 disk blocks could be used in
+a one or two hour session. This wouldn't be too bad if
+the record is thrown away at the end of the session,
+but could easily become a problem if we want to save the sessions
+for later examination. The ideas I propose below aren't necessarily
+very good, and may be more difficult to implement than I think.
+	If a user is in moby scrolling mode, everything he types
+and everything typed at him is recorded in a disk file.
+The lines he typed are marked in the file so they can be distinguished
+from those typed by the machine. Whenever he enters edit mode,
+the definition of the procedure he is editing is saved before
+the edit in the scroll record. At any time, the user can use the up and down
+arrow keys to move the cursor to a particular typed in line in
+the scroll record. If he then hits the 2edit0 key, the line is copied onto
+the end of the scroll record and he is allowed to edit it in the
+normal manner. He can hit 2do it0 to cause the line to be executed.
+If the line he chooses to edit is one which had a procedure
+edit command on it, he enters edit mode with the procedure
+as it was before the edit done by that line. As always,
+the edit can be exited without modifing the actual procedure
+definition by hitting 2stop0. 2Do it0 will cause the old procedure
+definition, plus any editing, to become the current procedure
+definition.
+	In addition to 2super0 up and down arrow, the user can type
+2super-super0 up and down arrow, which moves the cursor by a whole
+page. Whenever anything other than a cursor moving command is given,
+the user is automatically plunked back to the bottom of his
+scroll record. New stuff can only be added to the end of the scroll
+record.
+.br
+.block 4
+TURTLE DISPLAYS
+.br
+1b0
+.br
+	This part is easy, at least from the standpoint of coming up
+with ideas. I intend to do almost everything Henry did in LLOGO,
+almost exactly the same way. I suspect that the multiple turtle
+stuff won't get implemented, but most of the rest of it is relatively
+straightforward and/or clearly needed.
+All of that stuff is described in the TV TURTLE section
+of the LLOGO manual.
+1D0
+.end
+

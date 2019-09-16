@@ -1,0 +1,143 @@
+.mllit==1
+TITLE tv memory tester
+tyic==1
+tyoc==2
+
+A=1
+B=2
+C=3
+D=4
+E=5
+F=6
+t=7
+q=10
+r=11
+s=12
+w=13
+x=14
+y=15
+z=16
+P=17
+
+g=pushj p,
+
+tvp==300
+tv==tvp*2000	;address of beg of tv buffer
+tvend==tvp*2000+10*2000-1
+tvcntl==tvp*2000+10*2000
+
+
+PDL:	BLOCK 20
+
+BEG:	MOVEI P,PDL
+	MOVE A,[-11,,tvp]
+	MOVEI B,0
+	.CALL [SETZ
+		SIXBIT /CORBLK/
+		1000,,600000
+		1000,,-1
+		A
+		1000,,-2
+		SETZ B]
+	.VALUE
+	.open tyic,[sixbit /   tty/]
+	.value
+	.open tyoc,[sixbit /  !tty/]
+	.value
+TYPEO:	MOVEI A,[ASCIZ /
+MEMORY TO BE CHECKED:/]
+	PUSHJ P,ATYPE
+	MOVEI C,0
+LOOP:	.IOT TYIC,A
+	CAIN A,15
+	JRST NUMIN
+	CAIG A,71
+	CAIGE A,60
+	JRST TYPEO
+	LSH C,3
+	ADDI C,-60(A)
+	JRST LOOP
+NUMIN:	DPB C,TVBP
+	MOVE A,TV1
+	MOVEM A,TVCNTL
+
+	movei t,5
+ZEROS:	MOVE A,[-17776,,TV]
+	SETZM (A)
+	AOBJN A,.-1
+	MOVEI A,[ASCIZ /ZEROS
+/]
+zerosc:	pushj p,zc
+	skipe errcnt
+	jrst ones
+	MOVEI A,30.
+	.SLEEP A,
+	sojg t,zerosc
+	movei t,5
+	MOVEI A,[ASCIZ /ONES
+/]
+ones:	move a,[-17776,,tv]
+	move b,[-1,,777760]
+	movem b,(a)
+	aobjn a,.-1
+onesc:	pushj p,oc
+	skipe errcnt
+	jrst zeros
+	MOVEI A,30.
+	.SLEEP A,
+	sojg t,onesc
+	movei t,5
+	jrst zeros
+ZC:	setzm errcnt
+	MOVE A,[-17776,,TV]
+ZCHK:	SKIPE (A)
+	PUSHJ P,ERROR
+	AOBJN A,ZCHK
+	popj p,
+oc:	setzm errcnt
+	move a,[-17776,,tv]
+ochk:	came b,(a)
+	pushj p,error
+	aobjn a,ochk
+	popj p,
+ERROR:	aos errcnt'
+	PUSH P,A
+	PUSH P,B
+	PUSH P,T
+	MOVEI A,[ASCIZ /
+ERROR AT: /]
+	PUSHJ P,ATYPE
+	HRRZ A,-2(P)
+	SUBI A,TV
+	PUSHJ P,OTYPE
+	MOVEI A,[ASCIZ / CONTENTS: /]
+	PUSHJ P,ATYPE
+	MOVE A,-2(P)
+	MOVE A,(A)
+	LSH A,-4
+	PUSHJ P,OTYPE
+	POP P,T
+	POP P,B
+	POP P,A
+	POPJ P,
+OTYPE:	MOVE T,[440300,,A]
+	ILDB C,T
+	TLNE T,770000
+	JUMPE C,.-2
+OTLOOP:	ADDI C,60
+	.IOT TYOC,C
+	TLNN T,770000
+	POPJ P,
+	ILDB C,T
+	JRST OTLOOP
+tv1:	36000,,
+tvbp:	240500,,tv1
+
+ATYPE:	HRLI A,440700
+TLOOP:	ILDB T,A
+	JUMPE T,CPOPJ
+	.IOT TYOC,T
+	JRST TLOOP
+CPOPJ:	POPJ P,
+end beg
+

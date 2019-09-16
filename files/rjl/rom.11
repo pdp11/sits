@@ -1,0 +1,79 @@
+.mllit==1
+TITLE rom display
+tyic==1
+tyoc==2
+dskic==3
+
+A=1
+B=2
+C=3
+D=4
+E=5
+F=6
+t=7
+q=10
+r=11
+s=12
+w=13
+x=14
+y=15
+z=16
+P=17
+
+g=pushj p,
+
+tvp==300
+tv==tvp*2000	;address of beg of tv buffer
+tvend==tvp*2000+10*2000-1
+tvcntl==tvp*2000+10*2000
+
+
+PDL:	BLOCK 20
+
+BEG:	MOVEI P,PDL
+	MOVE A,[-11,,tvp]
+	MOVEI B,0
+	.CALL [SETZ
+		SIXBIT /CORBLK/
+		1000,,600000
+		1000,,-1
+		A
+		1000,,-2
+		SETZ B]
+	.VALUE
+	.open tyic,[sixbit /   tty/]
+	.value
+	.open tyoc,[sixbit /  !tty/]
+	.value
+	.open dskic,[sixbit /   dskbits  >/]
+	.value
+	move a,[-17776,,tv]
+	setzm (a)
+	aobjn a,.-1
+	setzb x,y
+loop:	.iot dskic,a
+	jumpl a,[.value ? jrst beg]
+	CAIN A,15
+	JRST [SETZM X ? AOJA Y,LOOP]
+	CAIG A,37
+	JRST LOOP
+	caie a,"H
+INC=[aos x ? caie x,32. ? jrst loop ? setzm x ? aoja y,loop]
+	jrst [CAIE A,"L ? JRST LOOP ? JRST INC]
+	move z,[777774,,4]
+	trne x,1
+	move z,[3777770]
+	move a,[-20,,tv]
+	move b,x
+	lsh b,-1
+	add a,b
+	move b,y
+	lsh b,4
+	IMULI B,18.
+	add a,b
+	movem z,(a)
+	ADDI A,17.
+	aobjn a,.-2
+	jrst inc
+end beg
+
