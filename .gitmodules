@@ -1,0 +1,6 @@
+[submodule "simh"]
+	path = simh
+	url = https://github.com/larsbrinkhoff/simh
+[submodule "tool"]
+	path = tool
+	url = https://github.com/larsbrinkhoff/pdp10-its-disassembler

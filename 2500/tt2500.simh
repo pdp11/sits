@@ -1,0 +1,5 @@
+at uart 12345,connect=localhost:20002
+load 2500/firmware.ascii
+reset
+dep rom 0
+c

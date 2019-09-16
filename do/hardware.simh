@@ -1,0 +1,33 @@
+set console wru=034
+
+set cpu 11/45
+set cpu 216k
+set cpu idle
+
+set hk disabled
+set rl disabled
+set rx disabled
+set rp disabled
+set rq disabled
+set lpt disabled
+set dz disabled
+set tm disabled
+set tq disabled
+set rf disabled
+
+set pclk enabled
+set ptr enabled
+set ptp enabled
+set dci enabled address=17774000 vector=300 lines=1
+set dh enabled address=17760020 vector=340
+set rk enabled address=17777400 vector=220
+set ng enabled address=17764040 vector=270 type=dazzle
+set tv enabled address=17764100
+set mb enabled address=17770000 vector=374
+
+at -U dci 20001
+at -U dh 20002
+at rk0 media/rk0.dsk
+at rk1 media/rk1.dsk
+at rk2 media/rk2.dsk
+at rk3 media/rk3.dsk

@@ -1,0 +1,10 @@
+*~
+*.dsk
+*.pt
+*.abs
+media
+do/ptr.do
+tools/*.o
+tools/convert-disk
+tools/analyze-disk
+tools/punch

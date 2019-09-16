@@ -1,0 +1,4 @@
+do do/hardware.simh
+load media/rug.abs
+do do/boot.simh
+continue
