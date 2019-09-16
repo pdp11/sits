@@ -1,0 +1,94 @@
+do do/hardware.simh
+
+expect "SALV"
+load media/salv.abs
+go
+
+expect "*" send "0I"; continue
+expect "sure?" send "Y"; continue
+expect "FFormat?" send "N"; continue
+expect "Rug disk?" send "Y"; continue
+expect "Swap area 1:" send "1000-2000\r"; continue
+expect "Swap area 2:" send "\r"; continue
+expect "Reserved:" send "\r"; continue
+expect "Disk name:" send "SITS0\r"
+continue
+
+noexpect
+expect "*" send "1I"; continue
+expect "sure?" send "Y"; continue
+expect "FFormat?" send "N"; continue
+expect "Rug disk?" send "N"; continue
+expect "Swap area 1:" send "100-1100\r"; continue
+expect "Swap area 2:" send "\r"; continue
+expect "Reserved:" send "\r"; continue
+expect "Disk name:" send "SITS1\r"
+continue
+
+noexpect
+expect "*" send "2I"; continue
+expect "sure?" send "Y"; continue
+expect "FFormat?" send "N"; continue
+expect "Rug disk?" send "N"; continue
+expect "Swap area 1:" send "100-1100\r"; continue
+expect "Swap area 2:" send "\r"; continue
+expect "Reserved:" send "\r"; continue
+expect "Disk name:" send "SITS2\r"
+continue
+
+noexpect
+expect "*" send "3I"; continue
+expect "sure?" send "Y"; continue
+expect "FFormat?" send "N"; continue
+expect "Rug disk?" send "N"; continue
+expect "Swap area 1:" send "100-1100\r"; continue
+expect "Swap area 2:" send "\r"; continue
+expect "Reserved:" send "\r"; continue
+expect "Disk name:" send "SITS3\r"
+continue
+
+noexpect
+expect "*" load media/rug.abs
+continue
+
+noexpect
+expect "*" send "\033\004"
+go
+
+do do/ptr.do
+
+do do/boot.simh
+
+noexpect
+expect "SITS IS UP" send "\032"; continue
+expect "LOGIN: " send "\r"; continue
+expect "#" send "DDT\r"
+continue
+
+noexpect
+expect "*" send "\033L0;. DDT\r"
+continue
+
+noexpect
+expect "*" send "purify\033G"; continue
+expect "BPT;" send ":PDUMP 0;. DDT\r"
+continue
+
+noexpect
+expect "*" send "\033L0;. SLOGO\r"
+continue
+
+noexpect
+expect "*" send "purify\033G"; continue
+expect "BPT;" send ":PDUMP 0;. SLOGO\r"
+continue
+
+noexpect
+dep system sr 4
+expect "*" send "\032"
+continue
+
+noexpect
+expect "#" send "SYSKILL\r"; continue
+expect "BPT" quit
+continue

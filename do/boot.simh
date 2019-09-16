@@ -1,0 +1,20 @@
+expect "*" send "\033L0:SALV\r"
+go
+
+noexpect
+expect "*" send "\033G"
+continue
+
+noexpect
+expect "SALV"
+continue
+
+noexpect
+expect "*" send "G"
+continue
+
+break 47146
+continue
+
+dep 47146 nop
+nobreak 47146
