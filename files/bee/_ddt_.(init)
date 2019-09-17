@@ -1,0 +1,10 @@
+:ddtsym tygtyp/
+:if n q&10000 > (:pict
+:tctype tv,sail,wholine 1
+:name
+)
+:if n q&20000 > (:tctyp exec
+)
+:ADMAIL
+:intest 
+

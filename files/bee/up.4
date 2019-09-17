@@ -1,0 +1,101 @@
+.xgp
+.font 0 25vg
+0
+.center
+HOW TO BRING UP LOGO:
+.sp
+.center
+PART 1
+.sp 2
+1.)	Check to see if LOGO has really crashed.  Check with other users, if there are any.
+.sp
+2.)	Check to see if there was anything printed on the system console (The one by the computer).
+.sp
+3.)	If nothing is printed out go to step 7.
+.sp
+4.)	If it has printed BE;BADBIT>BPT STOP!  Look for someone who knows what he is doing.  The Salvager must be run.  If no one else is around, do not try to restart LOGO.
+.sp
+5.)	If BE;(anything else)>BPT was printed out try typing "$P" (Where $ is really the key marked ESC)
+.sp
+6.)	If this doesn't work continue reading.
+.sp
+7.)	Push down the key marked HALT/ENABLE on the computer front panel
+.sp
+8.)	Push down momentarily the key marked START.
+.sp
+9.)	Put 177000 into the switches. (That means switches 15,14,13,12,11,10,9 up, the rest down)
+.sp
+10.)	Push down momentarily the key marked LOAD ADRS.
+.sp
+11.)	Put the switch marked HALT/ENABLE up.
+.sp
+12.)	Push down momentarily the switch marked START.
+.sp
+13.)	The system console should then type out a message, and then wait.  (It will take about 30 seconds after you push START until the message is printed)
+.sp
+14.)	If it didn't print out a message try Part 2. Otherwise after the message is done, type a carriage return on the system console, and LOGO should be up.
+.page
+.center
+HOW TO BRING UP LOGO:
+.sp
+.center
+PART 2
+.sp 2
+1.)	Execute steps 7 through 11 of PART 1, again.
+.sp
+2.)	Put all the switches 0 through 15 down.
+.sp
+3.)	Push down momentarily the key marked START
+.sp
+4.)	The system console should type a carriage return then a "*".  From now on, all typing operations should take place on the system console.
+.sp
+5.)	If it didn't, try PART 3. (Not for the timid)
+.sp
+6.)	Type "$L".  It will then type 3 spaces.  Type "0:".  (That is a zero)  It will then type 3 spaces again.  Then type "LOGO",and then a carriage return.
+.sp
+7.)	After about 30 seconds it should then again type "*".
+.sp
+8.)	Type "$Y".  it will type 3 spaces.  Type "F:".  It will type 3 spaces again.  Then type carriage return.
+.sp
+9.)	It will type "FILE EXISTS DELETE?".  Then you should type "Y".
+.sp
+10.)	After about 15 seconds it should again type "*".
+.sp
+11.)	Now try steps 7 through 13 from PART 1.  If this fails try PART 3.
+.page
+.center
+HOW TO BRING UP LOGO:
+.sp
+.center
+PART 3
+.sp 2
+1.)	This procedure is fairly drastic, and thus should not be done unless, you are sure that you have tried everything else correctly.  Also, it is not very simple to execute.
+.sp
+2.)	Go behind the computer, and locate the patch box.  This box is on the wall, and has a lot of black wires plugged into it.
+.sp
+3.)	Take any black wire,(Remember where you got it from, so that you can replace it when you are done.), and place one end in the jack marked T21,(Top row, 7th jack from the left), and the other end in DC11 #0, (Bottom row, second from the right)
+.sp
+4.)	Locate the paper tape marked "AUTO-LOAD CNSL SA 777002", in the bookshelf in front of the system console.
+.sp
+5.)	Put it into the paper tape reader, on the front of the computer.  (Place the tape in the right hand side, run it under the clamp and into the left side.)
+.sp
+6.)	Execute steps 7 and 8 in PART 1.  Then put 177002 into the switches.(15,14,13,12,11,10,9,1 up, the rest down)
+.sp
+7.)	Execute steps 10 through 12 in PART 1.  The tape should then start moving.  If it doesn't, you put the tape in incorrectly, and you should try again.
+.sp
+8.)	While it is reading in the tape, the bell should ring once on the system console.  If it doesn't the tape was read in incorrectly, and you should try again.
+.sp
+9.)	You should type on the system console, "^Z" (control-Z).
+.sp
+10.)	It should then type some message.  If it doesn't either you have made an error, or ITS (computer system on the 9th floor) is down.  If ITS is down, there is nothing that you can do.(Except grind your teeth.)
+.sp
+11.)	After it types the message, you should type "PDP11$U".  It should type some more stuff, and then stop.
+.sp
+12.)	You should then type ":NLODER" and then a carriage return.  It will then type another carriage return and wait.
+.sp
+13.)	You should then type "RUG;AR BIN" and then a carriage return.  Then it will start to run, and then after about 5 minutes, the system console should type a "*".
+.sp
+14.)	Execute steps 6 through 11 of PART 2.  If that failed look for a person who knows what he is doing.
+.sp
+15.)	Now replace the black wire you moved in the patch box, and put back the tapes where you found them.
+
