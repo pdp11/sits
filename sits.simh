@@ -1,0 +1,41 @@
+set cpu 11/45
+set cpu 56k
+
+set hk disabled
+set rl disabled
+set rx disabled
+set rp disabled
+set rq disabled
+set lpt disabled
+set dz disabled
+set tm disabled
+set tq disabled
+
+set ng enabled
+
+set ke enabled
+set pclk enabled
+set ptr enabled
+set ptp enabled
+
+#DC11 @ 174000
+set dci enabled lines=2
+at -U dci 20001
+#DH11 @ 160020
+set vh enabled addr=17760020 vector=340 lines=16
+at -U vh 20002
+
+set rf enabled
+at rf0 rf0.dsk
+
+set rk enabled
+at rk0 rk0.dsk
+at rk1 rk1.dsk
+
+# Start at 134044
+load sits.abs
+#load rug.abs
+
+set cpu history=100
+break 125000
+break 125052
