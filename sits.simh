@@ -1,5 +1,5 @@
 set cpu 11/45
-set cpu 56k
+set cpu 128k
 
 set hk disabled
 set rl disabled
@@ -31,11 +31,19 @@ at rf0 rf0.dsk
 set rk enabled
 at rk0 rk0.dsk
 at rk1 rk1.dsk
+at rk2 rk2.dsk
+at rk3 rk3.dsk
 
 # Start at 134044
-load sits.abs
-#load rug.abs
+#load sits.abs
+load rug.abs
+#load salv.abs
 
-set cpu history=100
+#dep 124572 nop
+#dep 124574 nop
+
+set debug stdout
+set rf debug
+set cpu history=100000
 break 125000
 break 125052
