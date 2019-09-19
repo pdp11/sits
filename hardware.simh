@@ -1,0 +1,30 @@
+set cpu 11/45
+set cpu 128k
+
+set hk disabled
+set rl disabled
+set rx disabled
+set rp disabled
+set rq disabled
+set lpt disabled
+set dz disabled
+set tm disabled
+set tq disabled
+
+set ke enabled
+set pclk enabled
+set ptr enabled
+set ptp enabled
+set dci enabled address=17774000 vector=300 lines=2
+set vh enabled addr=17760020 vector=340 lines=16
+set rf enabled addr=17777460 vector=204
+set rk enabled address=17777400 vector=220
+#set ng enabled address=164040 vector=0270
+
+at -U dci 20001
+at -U vh 20002
+at rf0 rf0.dsk
+at rk0 rk0.dsk
+at rk1 rk1.dsk
+at rk2 rk2.dsk
+at rk3 rk3.dsk

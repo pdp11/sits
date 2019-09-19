@@ -1,0 +1,49 @@
+do hardware.simh
+
+expect "SALV" go
+expect "*" send "F"; go
+expect "SURE?" send "Y"; go
+
+expect "*" send "0I"; go
+expect "SURE?" send "Y"; go
+expect "FORMAT?" send "N"; go
+expect "BASE YEAR:" send "1975\r"; go
+expect "SWAP AREA 1:" send "1000-2000\r"; go
+expect "SWAP AREA 2:" send "\r"; go
+expect "RESERVED:" send "0\r"; go
+expect "RESERVED:" send "4-23\r"; go
+expect "RESERVED:" send "54-217\r"; go
+expect "RESERVED:" send "\r"; go
+expect "DISK NAME:" send "SITS0\r"; go
+
+expect "*" send "1I"; go
+expect "SURE?" send "Y"; go
+expect "FORMAT?" send "N"; go
+expect "BASE YEAR:" send "1975\r"; go
+expect "SWAP AREA 1:" send "100-1100\r"; go
+expect "SWAP AREA 2:" send "\r"; go
+expect "RESERVED:" send "\r"; go
+expect "DISK NAME:" send "SITS1\r"; go
+
+expect "*" send "2I"; go
+expect "SURE?" send "Y"; go
+expect "FORMAT?" send "N"; go
+expect "BASE YEAR:" send "1975\r"; go
+expect "SWAP AREA 1:" send "100-1100\r"; go
+expect "SWAP AREA 2:" send "\r"; go
+expect "RESERVED:" send "\r"; go
+expect "DISK NAME:" send "SITS2\r"; go
+
+expect "*" send "3I"; go
+expect "SURE?" send "Y"; go
+expect "FORMAT?" send "N"; go
+expect "BASE YEAR:" send "1975\r"; go
+expect "SWAP AREA 1:" send "100-1100\r"; go
+expect "SWAP AREA 2:" send "\r"; go
+expect "RESERVED:" send "\r"; go
+expect "DISK NAME:" send "SITS3\r"; go
+
+expect "*" quit
+
+load salv.abs
+go

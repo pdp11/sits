@@ -1,49 +1,30 @@
-set cpu 11/45
-set cpu 128k
+do hardware.simh
 
-set hk disabled
-set rl disabled
-set rx disabled
-set rp disabled
-set rq disabled
-set lpt disabled
-set dz disabled
-set tm disabled
-set tq disabled
+load sits.abs
 
-set ng enabled
-
-set ke enabled
-set pclk enabled
-set ptr enabled
-set ptp enabled
-
-#DC11 @ 174000
-set dci enabled lines=2
-at -U dci 20001
-#DH11 @ 160020
-set vh enabled addr=17760020 vector=340 lines=16
-at -U vh 20002
-
-set rf enabled
-at rf0 rf0.dsk
-
-set rk enabled
-at rk0 rk0.dsk
-at rk1 rk1.dsk
-at rk2 rk2.dsk
-at rk3 rk3.dsk
-
-# Start at 134044
-#load sits.abs
-load rug.abs
-#load salv.abs
-
-#dep 124572 nop
-#dep 124574 nop
+dep 124572 nop
+dep 124574 nop
 
 set debug stdout
-set rf debug
 set cpu history=100000
 break 125000
 break 125052
+#sysjob
+break 135052
+#mfamu
+#break 055250
+#dirent
+#break 103606
+#dire.0+
+#break 103640
+#namcmp
+#break 105026
+#mtamu3+
+#break 55346
+#drlook
+break 104346
+
+#expect "*" send "\033L0:\r"; go
+#expect "*" dep 124572 nop; dep 124574 nop; send "\033G"; go
+#load rug.abs
+go

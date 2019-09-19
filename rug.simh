@@ -1,0 +1,25 @@
+do hardware.simh
+
+expect "*" send "\033\004"; go
+expect "*" at ptr sits.pt; send "\033LP:\r"; go
+expect "*" send "\033Y0:DAZZEL\r"; go
+expect "*" at ptr sysspr.pt; send "\033LP:\r"; go
+expect "*" send "\033Y0:SYSSPR>\r"; go
+expect "*" at ptr ddt.pt; send "\033LP:\r"; go
+expect "*" send "\033Y0:DDT>\r"; go
+expect "*" quit
+
+load rug.abs
+go
+go
+go
+go
+go
+go
+go
+go
+go
+go
+go
+go
+go
