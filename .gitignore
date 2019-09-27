@@ -1,2 +1,4 @@
 *~
 *.dsk
+tools/*.o
+tools/convert-disk
