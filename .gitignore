@@ -2,3 +2,4 @@
 *.dsk
 tools/*.o
 tools/convert-disk
+tools/analyze-disk
