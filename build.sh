@@ -1,8 +1,21 @@
 #!/bin/sh
 
-../its/tools/dasm/palx -A < files/sits/sits.bin > sits.abs
-../its/tools/dasm/palx -A < files/rug/ar633.bin > rug.abs
-../its/tools/dasm/palx -A < files/sits/salv.bin > salv.abs
+SITS=new
+RUG=new
+#SITS=files/sits
+#RUG=files/rug
 
-../its/tools/simh/BIN/pdp11 salv.simh
-../its/tools/simh/BIN/pdp11 rug.simh
+(cd tool; make)
+(cd tools; make)
+(cd simh; make pdp11)
+
+./tool/palx -A < $RUG/ar.bin > rug.abs
+./tool/palx -A < $SITS/salv.bin > salv.abs
+./tool/palx -A < $SITS/sits.bin > sits.abs
+
+./tools/punch $SITS/sysspr.bin > sysspr.pt
+./tools/punch $SITS/sits.bin > sits.pt
+./tools/punch $SITS/ddt.bin > ddt.pt
+
+./simh/BIN/pdp11 salv.simh
+./simh/BIN/pdp11 rug.simh

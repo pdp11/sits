@@ -1,30 +1,18 @@
 do hardware.simh
 
-load sits.abs
-
-dep 124572 nop
-dep 124574 nop
-
 set debug stdout
-set cpu history=100000
-break 125000
-break 125052
-#sysjob
-break 135052
-#mfamu
-#break 055250
-#dirent
-#break 103606
-#dire.0+
-#break 103640
-#namcmp
-#break 105026
-#mtamu3+
-#break 55346
-#drlook
-break 104346
+set cpu history=10000
 
-#expect "*" send "\033L0:\r"; go
-#expect "*" dep 124572 nop; dep 124574 nop; send "\033G"; go
-#load rug.abs
+break 125770
+
+load rug.abs
+expect "*" send "\033L0:\r"
 go
+
+noexpect
+expect "*" send "47146/nop\r"; sleep 2; continue
+#expect "*" send "135244\033b\r"; continue
+#expect "*" send "134320\033b\r"; continue
+#expect "*" send "123620\033b\r"; continue
+expect "*" send "\033G"; continue
+continue

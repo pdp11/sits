@@ -1,5 +1,8 @@
 *~
 *.dsk
+*.pt
+*.abs
 tools/*.o
 tools/convert-disk
 tools/analyze-disk
+tools/punch

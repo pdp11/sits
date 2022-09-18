@@ -1,49 +1,51 @@
 do hardware.simh
 
-expect "SALV" go
-expect "*" send "F"; go
-expect "SURE?" send "Y"; go
-
-expect "*" send "0I"; go
-expect "SURE?" send "Y"; go
-expect "FORMAT?" send "N"; go
-expect "BASE YEAR:" send "1975\r"; go
-expect "SWAP AREA 1:" send "1000-2000\r"; go
-expect "SWAP AREA 2:" send "\r"; go
-expect "RESERVED:" send "0\r"; go
-expect "RESERVED:" send "4-23\r"; go
-expect "RESERVED:" send "54-217\r"; go
-expect "RESERVED:" send "\r"; go
-expect "DISK NAME:" send "SITS0\r"; go
-
-expect "*" send "1I"; go
-expect "SURE?" send "Y"; go
-expect "FORMAT?" send "N"; go
-expect "BASE YEAR:" send "1975\r"; go
-expect "SWAP AREA 1:" send "100-1100\r"; go
-expect "SWAP AREA 2:" send "\r"; go
-expect "RESERVED:" send "\r"; go
-expect "DISK NAME:" send "SITS1\r"; go
-
-expect "*" send "2I"; go
-expect "SURE?" send "Y"; go
-expect "FORMAT?" send "N"; go
-expect "BASE YEAR:" send "1975\r"; go
-expect "SWAP AREA 1:" send "100-1100\r"; go
-expect "SWAP AREA 2:" send "\r"; go
-expect "RESERVED:" send "\r"; go
-expect "DISK NAME:" send "SITS2\r"; go
-
-expect "*" send "3I"; go
-expect "SURE?" send "Y"; go
-expect "FORMAT?" send "N"; go
-expect "BASE YEAR:" send "1975\r"; go
-expect "SWAP AREA 1:" send "100-1100\r"; go
-expect "SWAP AREA 2:" send "\r"; go
-expect "RESERVED:" send "\r"; go
-expect "DISK NAME:" send "SITS3\r"; go
-
-expect "*" quit
-
+expect "SALV"
 load salv.abs
 go
+
+expect "*" send "0I"; continue
+expect "sure?" send "Y"; continue
+expect "FFormat?" send "N"; continue
+expect "Rug disk?" send "Y"; continue
+expect "Swap area 1:" send "1000-2000\r"; continue
+expect "Swap area 2:" send "\r"; continue
+expect "Reserved:" send "\r"; continue
+expect "Disk name:" send "SITS0\r"
+continue
+
+noexpect
+expect "*" send "1I"; continue
+expect "sure?" send "Y"; continue
+expect "FFormat?" send "N"; continue
+expect "Rug disk?" send "N"; continue
+expect "Swap area 1:" send "100-1100\r"; continue
+expect "Swap area 2:" send "\r"; continue
+expect "Reserved:" send "\r"; continue
+expect "Disk name:" send "SITS1\r"
+continue
+
+noexpect
+expect "*" send "2I"; continue
+expect "sure?" send "Y"; continue
+expect "FFormat?" send "N"; continue
+expect "Rug disk?" send "N"; continue
+expect "Swap area 1:" send "100-1100\r"; continue
+expect "Swap area 2:" send "\r"; continue
+expect "Reserved:" send "\r"; continue
+expect "Disk name:" send "SITS2\r"
+continue
+
+noexpect
+expect "*" send "3I"; continue
+expect "sure?" send "Y"; continue
+expect "FFormat?" send "N"; continue
+expect "Rug disk?" send "N"; continue
+expect "Swap area 1:" send "100-1100\r"; continue
+expect "Swap area 2:" send "\r"; continue
+expect "Reserved:" send "\r"; continue
+expect "Disk name:" send "SITS3\r"
+continue
+
+expect "*" quit
+continue
