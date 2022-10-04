@@ -3,16 +3,25 @@ do hardware.simh
 set debug stdout
 set cpu history=10000
 
-break 125770
-
 load rug.abs
 expect "*" send "\033L0:\r"
 go
 
 noexpect
-expect "*" send "47146/nop\r"; sleep 2; continue
-#expect "*" send "135244\033b\r"; continue
-#expect "*" send "134320\033b\r"; continue
-#expect "*" send "123620\033b\r"; continue
-expect "*" send "\033G"; continue
+expect "*" send "\033G"
+continue
+
+noexpect
+expect "SALV"
+continue
+
+noexpect
+expect "*" send "G"
+continue
+
+break 47146
+continue
+
+dep 47146 nop
+nobreak 47146
 continue

@@ -6,8 +6,14 @@ expect "*" send "\033\004"
 go
 
 noexpect
-expect "*" at ptr sits.pt; send "\033LP:\r"; continue
+expect "*" at ptr salv.pt; send "\033LP:\r"; continue
 expect "*" send "\033Y0:DAZZEL\r"
+continue
+continue
+
+noexpect
+expect "*" at ptr sits.pt; send "\033LP:\r"; continue
+expect "*" send "\033Y0:SITS\r"
 continue
 continue
 continue

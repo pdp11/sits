@@ -15,6 +15,7 @@ RUG=new
 
 ./tools/punch $SITS/sysspr.bin > sysspr.pt
 ./tools/punch $SITS/sits.bin > sits.pt
+./tools/punch $SITS/salv.bin > salv.pt
 ./tools/punch $SITS/ddt.bin > ddt.pt
 
 ./simh/BIN/pdp11 salv.simh
