@@ -40,5 +40,11 @@ continue
 continue
 continue
 
+noexpect
+expect "*" at ptr fnt.pt; send "\033LP:\r"; continue
+expect "*" send "\033Y0:FNT\r"
+continue
+continue
+
 expect "*" quit
 continue
