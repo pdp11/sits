@@ -21,10 +21,11 @@ set pclk enabled
 set ptr enabled
 set ptp enabled
 set dci enabled address=17774000 vector=300 lines=1
-set vh enabled addr=17760020 vector=340 lines=16
+set vh enabled address=17760020 vector=340 lines=16
 set rk enabled address=17777400 vector=220
-set ng enabled address=17764040 vector=0270
+set ng enabled address=17764040 vector=270
 set tv enabled address=17764100
+set mb enabled address=17770000 vector=374
 
 at -U dci 20001
 at -U vh 20002

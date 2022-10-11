@@ -1,7 +1,7 @@
 do hardware.simh
 
 set debug stdout
-set cpu history=10000
+set mb debug
 
 load rug.abs
 expect "*" send "\033L0:\r"
@@ -19,9 +19,14 @@ noexpect
 expect "*" send "G"
 continue
 
+set cpu history=200000
 break 47146
 continue
 
 dep 47146 nop
 nobreak 47146
+break 125770
 continue
+
+show @log cpu history
+quit

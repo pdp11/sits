@@ -7,3 +7,4 @@ PID2="$!"
 trap "kill $PID1 $PID2" EXIT QUIT INT TERM
 
 ./simh/BIN/pdp11 sits.simh
+#gdb ./simh/BIN/pdp11
