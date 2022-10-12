@@ -3,7 +3,7 @@ set console wru=034
 set cpu 11/45
 #set cpu 256k
 #set cpu 128k
-set cpu 192k
+set cpu 216k
 
 set hk disabled
 set rl disabled
