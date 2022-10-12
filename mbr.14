@@ -1,0 +1,341 @@
+.XGP
+.ADJUST
+.vsp 2
+.double
+.he1
+PDP11 Memory Break Device
+.he2
+General description
+.CE
+The PDP11 Memory Break Device (MB11)
+
+	The MB11 is a PDP11 device which is intended to  aid
+debugging machine language PDP11 programs. It may be set  to
+"watch" for certain memory references and cause an  interrupt
+to a  debugging routine  when they  occur. The  device  also
+records the last  64 addresses which  were referenced;  when
+the interrupt  condition occurs  this record  is "frozen"  so
+that the 64  references imediately  preceeding the  interrupt
+condition may be examined.
+	The device is mainly useful for finding program bugs
+which are extremely difficult to find with more conventional
+techniques. One such class of bugs is the "who is clobbering
+this location"  type  of  bug.  The device  may  be  set  to
+interrupt  on  write  references  to  one  or  more   specfic
+locations; when  the  interrupt  occurs  the  programmer  can
+examine the history memory to determine why the the  program
+was writing in the memory location in question.
+	Another type of bug  which is normally difficult  to
+find occurs when  the program  drops dead  at some  location
+where it would not  be expected to be,  e.g. if the  program
+jumps into  a  data  area. When  the  debugging  program  is
+entered, it can immediately freeze the history memory, which
+can then be examined  to determine how  the flow of  control
+got to the unexpected point.
+	The MB11 includes  the history  memory, the  history
+memory count register, the X  and Y compare registers and  a
+control  register.  The  X  and  Y  registers  may  be  used
+independently to  cause  an  address  compare  on  two  specific
+addresses, or may be used  together to compare on a  reference
+to a location  between the addresses in the two  registers.
+The compare condition  can be  either read or  write or  both,
+independently for X and  Y. The X and  Y registers have 18  bits
+each for the  address and  two bits to  indicate whether  the
+for the setting the read and write compare conditions.
+The  control register  contains two  bits to  set
+compare on read and/or  write between the  X and Y  registers.
+The control register also has an interrupt enable bit, a  bit
+to indicate that an enabled  address compare has occured,  a
+bit to  inhibit the  UNIBUS INIT  signal from  reseting  the
+device and  4  bits for  freezing  the history  memory.  The
+history memory count register controls which history  memory
+location  is  currently  available  in  the  history  memory
+register; it also controls which history memory location  is
+written into next. When the history memory is not frozen the
+history memory  count register  is incremented  after  every
+memory reference.
+
+.PAGE
+.he2
+Hardware
+.ce
+Hardware Description
+
+	The MB11 is a standard quad high module. It plugs
+into a regular SPC slot and uses the normal power supplies.
+The UNIBUS address, interrupt vector address and interrupt
+level are all user setable. The device represents 8 words
+on the UNIBUS. The low order 4 bits of the UNIBUS address
+select the register, the high order 5 bits of the UNIBUS
+address must be ones and the middle 9 bits of UNIBUS address
+are settable by switches. The MB11 may interrupt through
+any vector 0 through 374, setable by switches. The interrupt
+level is selected by the standard DEC interrupt level jumpers.
+Level 7 is recomended.
+	It should be noted that the MB11, being a UNIBUS device,
+will only notice references made to memory that is on the UNIBUS.
+This is not a problem on most PDP11s, but the MB11 will not
+notice references to bipolar or MOS memory on the PDP11/45,
+nor will it notice references to memory on the PDP11/70
+memory bus. Also, since the LSI11 (and the PDP11/03) doesn't
+have a UNIBUS, the MB11 cannot be used with them.
+.page
+.he2
+Programming
+.CE
+Programming the MB11
+
+	The MB11 consists of 8 UNIBUS addressable registers.
+These registers may be read as  words or bytes, but must  be
+written only  as  full  words. The  first  register  is  the
+control register.
+.NOFILL
+.ablock 16
+.single
+.spread
+/Register 7xxxx0//Control Register
+ ________________________|________________________
+ |0 |0 |0 |0 |  |  |  |  |  |  |0 |0 |  |  |  |  |  
+ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  
+ _________________________________________________
+               |  |  |  |  |  |        |        |
+               |  |  |  |  |  |        __________
+               |  |  |  |  |  |             |
+               |  |  |  |  |  |             _____Freeze bits
+               |  |  |  |  |  |_________Interupt enable
+               |  |  |  |  |____________Address compare
+               |  |  |  |_______________X<address<Y read
+               |  |  |__________________X<address<Y write
+               |  |_____________________Ignore INIT
+               |________________________Interupt on almost overflow
+
+.double
+.ADJUST
+	The  freeze  bits  will  inhibit  storing  into  the
+history memory if any  of them are on.  They can be used  to
+temporarilly inhibit  the  history  memory on  entry  to  an
+interrupt or  debugging  routine.  In the  case  of  interrupt
+routines, there is a problem that the history memory can  be
+quickly filled by an  interrupt routine immediately before  a
+compare  event  occurs  in  the  main  program.  This   should
+not ordinarily be too  serious, but it can  be minimized  if
+desired by  placing an  INC  MBCSR at  the entrance  to each
+interrupt routine and a  DEC MBCSR just  before the exit.  In
+this way  only  a  few  history  memory  locations  will  be
+clobbered by  the interrupt  routine.  If the  address  compare
+condition occurs in  the interrupt routine  it will still  be
+clear that this has happened from the history memory because
+the instrution fetches for the INC will be recorded  but the
+fetch for the RTT  or RTI will  not be. If  it is not  clear
+where in the interrupt  routine the address compare  happened
+it will be nessesary to remove  the INC and DEC and run  the
+program again. If the compare occurs in an interrupt routine
+that interrupted out of an inerrupt routin that had INCed the
+control register, things will be rather confusing.
+The debugging program  should also  INC  the
+MBCSR as the  first instruction  it executes  to ensure  the
+maximum  number  of  references  before  the  entry  to  the
+debugger can be examined (in the case where the debugger was
+entered from a BPT or trace trap, or manually started). Note
+that care must be exercised  to ensure that the register  is
+not decremented  when  the freeze  bits  are all  zero!
+	The
+interrupt enable bit controls whether the MB11 will  interrupt
+or not  when an  address compare  condition occurs.  If  the
+interrupt enable  is set  an address  compare will  cause  an
+interrupt if the processor level  is lower than the  interrupt
+level of the MB11. The history  memory is frozen even if  an
+interrupt cannot be generated so  that the exact location  of
+the address compare can be determined even if the program is
+running at a  higher level than  the MB11 is  wired to.  The
+address compare bit is set by one of the six address compare
+conditions occuring; it  can be   reset by  writing a   zero
+into the  bit, but cannot be set by the  program. The  X<address<Y
+read and  write  bits enable address  compares on reads  and
+writes in  between the locations specified  by the  X and  Y
+registers. The  Inhibit INIT bit inhibits the  effect of the
+UNIBUS INIT signal  on the MB11;  if the bit is not set  the
+control register will  be cleared by  the INIT signal  which
+can be generated  by a RESET  instruction. With the  Inhibit
+INIT bit set it is  possible to have address compares   remain
+set  despite  the  INIT   signal;  the  control register  is
+always reset on  powering up,   however. Note that only  the
+control register is  reset on power  up and INIT if the Inhibit
+INIT bit is clear; the other registers
+must  be reset by  the program if  their contents are to  be
+predictable.
+	The interrupt on almost overflow bit enables an
+interrupt to occur when the history memory counter reaches
+56 (70 octal). When this bit is set the history memory counter
+overflow bit will cause the histroy memory to be frozen.
+The use of this bit is described in the section describing
+the count register.
+
+	The X and  Y registers are  each implemented as  two
+UNIBUS registers. Registers 7xxxx2 and  7xxxx4 are the X register  and
+registers 7xxxx6  and 7xxx10  are  the Y  register. The  low  numbered
+register of each pair contains  the high order address  bits
+and the read and write compare enables.
+.nofill
+.ablock 21
+.single
+.spread
+/Registers 7xxxx2 and 7xxxx6//High Order X and Y Bits
+ ________________________|________________________
+ |0 |0 |0 |0 |0 |0 |0 |0 |0 |0 |0 |0 |  |  |  |  |  
+ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  
+ _________________________________________________
+                                       |  |  |  |
+                                       |  |  |  |____Bit 16
+                                       |  |  |_______Bit 17
+                                       |  |___Enable compare on read
+                                       |______Enable compare on write
+
+.spread
+/Registers 7xxxx4 and 7xxx10//Low Order X and Y Bits
+ ________________________|________________________
+ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |0 |  
+ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  
+ _________________________________________________
+   |                                            |
+   |____________________________________________|
+                         |
+                         |________________________Bits  15-0
+
+.double
+.adjust
+	When MSYN occurs on the UNIBUS (indicating the start
+of a  memory cycle)  the MB11  compares the  address on  the
+UNIBUS with the contents of the X and Y registers. If the  X
+or Y register contains exactly the same address as is on the
+UNIBUS an address compare condition will occur if the  cycle
+is an enabled one, e.g. if the X register matches to  UNIBUS
+address and the cycle  is a read and  the X register  enable
+compare on read bit is set, and address compare will  occur.
+Similarly, if the address is greater than the X register and
+less than the Y  register an address  compare will occur  if
+the cycle is of a type  enabled in the control register.  It
+should be  noted  that some  PDP11  instructions do  a  read
+before they do a write, e.g.  BIS.  Note also that the  MB11
+completely ignores  bit 0  of the  UNIBUS address  and  that
+there is  no  provision  for  distinguishing  a  byte  cycle
+(DATAOB) from a full word cyle (DATAO).
+	The history memory counter register (7xxx16) is used
+as the address pointer into the history memory.
+.nofill
+.single
+.ablock 9
+.spread
+/Register 7xxx16//History Memory Count Register
+ ________________________|________________________
+ |0 |0 |0 |0 |0 |0 |0 |0 |0 |  |  |  |  |  |  |  |  
+ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  
+ _________________________________________________
+                              |  |              |
+                              |  |______________|
+                              |          |_______History memory address
+                              |__________________History memory overflow
+.double
+.adjust
+	The 6 low order bits of the register act as the address
+bits for the 64 word history memory. When the history
+memory is not frozen (control register bits 7, 3, 2, 1 and 0
+are all clear) every memory reference will have its address
+stored in the history memory and will cause the counter
+register to be incremented by 1. The counter is always incremented
+after the address is stored, so the counter points to the next
+location to be stored into. If the reference causes a freeze
+the counter will still increment due to that reference.
+If a memory reference clears a freeze condition it will
+not be stored in the history memory, nor will it cause the
+counter to increment. The counter is a writeable register;
+the low six bits may be set to any desired value. All writes
+to this register will clear the overflow bit; the overflow bit
+is only set by the counter going from all ones to all zeros.
+Setting the overflow bit has no effect unless the interupt on
+overflow bit is set in the control register. If that bit is set,
+setting the overflow bit will freeze the history memory.
+The contents of the counter control what history memory location
+may be examined in the history memory register. The history memory
+register is implemented as two UNIBUS registers.
+.nofill
+.single
+.ablock 19
+.spread
+/Register 7xxx12//High Bits of History Memory Register
+ ________________________|________________________
+ |0 |0 |0 |0 |0 |0 |0 |0 |0 |0 |0 |0 |0 |  |  |  |  
+ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  
+ _________________________________________________
+                                          |  |  |
+                                          |  |  |____Bit 16
+                                          |  |_______Bit 17
+                                          |___Reference was a write
+
+.spread
+/Register 7xxx14//Low Bits of History Memory Register
+ ________________________|________________________
+ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |0 |  
+ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  
+ _________________________________________________
+   |                                            |
+   |____________________________________________|
+                         |
+                         |________________________Bits  15-0
+
+.double
+.adjust
+	When the debugging program is entered it should INC the
+control register to make sure the history memory is frozen.
+If the debugger was entered by an address compare compare
+the history memory was of course already frozen; if it was
+not the last three history memory locations will contain
+the record of the INC. The debugging program should
+also have commands for examining the history memory.
+In order to implement this, the debugging program should
+store the value of the history memory counter register
+when it is entered; if the user requests printout of the
+n th previous reference, the debugging program loads
+<stored history memory counter>-(n+1) mod 64 into the history
+memory counter and prints the contents of the history memory
+register.
+	The purpose of the overflow bit in the history
+memory counter is to allow a very sophisticated debugging
+program, or a timesharing system to control the history
+memory. When the debugging program returns control
+to the program being debuged after, for example, a breakpoint,
+it must unfreeze the history memory before returning. If
+the program being debugged returns after only a few
+instructions the history memory will contain both the references
+made by the debugger while returning to the program and the
+references made by the program. A smart debugger could elminate
+the references it made from the history memory by useing
+a more complicated history memory examining command than
+was described above. By clearing the history memory counter
+register before unfreezing the history memory the debugger
+can examine the overflow bit on reentry to determine if
+the program made more than 64 references; if it did not,
+then the debugger will only consider the last <counter>-<number
+of references made by debugger in returning> entrys in the
+history memory to be valid references. If the debugger
+had stored the previous contents of the history memory
+the user could have the apperance of a long history
+memory even though the debugging program had wiped out
+part of the real history memory.
+A similar technique could be used in a timeshareing system
+to make the history memory appear to be not disturbed
+by a scheduling operation.
+	In conjunction with the interupt on almost overflow bit
+in the control register the history memory counter can be used to
+simulate an arbitraily large history memory. When the interrupt
+due to the near overflow of the counter occurs a routine
+can save the contents of the history memory, reset the counter
+and continue the program. The reason for the interrupt occuring
+on the counter reaching 56 (70 octal) rather than on overflow
+is that the overflow may occur at the begining of the execution
+of an instruction, in which case the last references the instruction
+makes would be lost, since the interupt cannot happen
+until the instruction is completed.
+
+UNIBUS, PDP11 and DEC are trademarks of Digital Equipment Co.
+.endî
