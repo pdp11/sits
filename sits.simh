@@ -25,8 +25,4 @@ continue
 
 dep 47146 nop
 nobreak 47146
-break 125770
 continue
-
-show @log cpu history
-quit
