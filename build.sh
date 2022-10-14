@@ -18,6 +18,7 @@ RUG=new
 ./tools/punch $SITS/salv.bin > salv.pt
 ./tools/punch $SITS/ddt.bin > ddt.pt
 ./tools/punch $SITS/fnt.bin > fnt.pt
+./tools/punch $SITS/slogo.bin > slogo.pt
 
 ./simh/BIN/pdp11 salv.simh
 ./simh/BIN/pdp11 rug.simh

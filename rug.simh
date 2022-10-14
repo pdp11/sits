@@ -46,5 +46,20 @@ expect "*" send "\033Y0:FNT\r"
 continue
 continue
 
+noexpect
+expect "*" at ptr slogo.pt; send "\033LP:\r"; continue
+expect "*" send "\033Y0:SLOGO\r"
+continue
+continue
+continue
+continue
+continue
+continue
+continue
+continue
+continue
+continue
+continue
+
 expect "*" quit
 continue
