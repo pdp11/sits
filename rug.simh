@@ -80,5 +80,13 @@ expect "*" send "\033Y0:DIRED\r"
 continue
 continue
 
+noexpect
+expect "*" at ptr tinte.pt; send "\033LP:\r"; continue
+expect "*" send "\033Y0:TINTE\r"
+continue
+continue
+continue
+continue
+
 expect "*" quit
 continue

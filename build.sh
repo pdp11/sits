@@ -22,6 +22,7 @@ RUG=new
 ./tools/punch $SITS/jotto.bin > jotto.pt
 ./tools/punch $SITS/dired.bin > dired.pt
 ./tools/punch sits/inquir.bin > inquir.pt
+./tools/punch sits/tinte.bin > tinte.pt
 
 ./simh/BIN/pdp11 salv.simh
 ./simh/BIN/pdp11 rug.simh
