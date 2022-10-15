@@ -61,5 +61,10 @@ continue
 continue
 continue
 
+noexpect
+expect "*" at ptr inquir.pt; send "\033LP:\r"; continue
+expect "*" send "\033Y0:INQUIR\r"
+continue
+
 expect "*" quit
 continue
