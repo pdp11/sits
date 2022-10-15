@@ -1,8 +1,6 @@
 set console wru=034
 
 set cpu 11/45
-#set cpu 256k
-#set cpu 128k
 set cpu 216k
 
 set hk disabled
@@ -21,14 +19,14 @@ set pclk enabled
 set ptr enabled
 set ptp enabled
 set dci enabled address=17774000 vector=300 lines=1
-set vh enabled address=17760020 vector=340 lines=16
+set dh enabled address=17760020 vector=340 lines=16
 set rk enabled address=17777400 vector=220
 set ng enabled address=17764040 vector=270
 set tv enabled address=17764100
 set mb enabled address=17770000 vector=374
 
 at -U dci 20001
-at -U vh 20002
+at -U dh 20002
 at rk0 rk0.dsk
 at rk1 rk1.dsk
 at rk2 rk2.dsk
