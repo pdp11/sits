@@ -20,6 +20,7 @@ RUG=new
 ./tools/punch $SITS/fnt.bin > fnt.pt
 ./tools/punch $SITS/slogo.bin > slogo.pt
 ./tools/punch $SITS/jotto.bin > jotto.pt
+./tools/punch $SITS/dired.bin > dired.pt
 ./tools/punch sits/inquir.bin > inquir.pt
 
 ./simh/BIN/pdp11 salv.simh

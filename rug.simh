@@ -74,5 +74,11 @@ continue
 continue
 continue
 
+noexpect
+expect "*" at ptr dired.pt; send "\033LP:\r"; continue
+expect "*" send "\033Y0:DIRED\r"
+continue
+continue
+
 expect "*" quit
 continue
