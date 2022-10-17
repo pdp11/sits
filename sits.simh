@@ -1,6 +1,6 @@
 do hardware.simh
 
-set debug stdout
+set debug stderr
 set mb debug
 
 load rug.abs
@@ -25,4 +25,8 @@ continue
 
 dep 47146 nop
 nobreak 47146
+break 27224
+continue
+
+set tv debug
 continue
