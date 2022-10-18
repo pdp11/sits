@@ -7,7 +7,7 @@ RUG=new
 
 (cd tool; make)
 (cd tools; make)
-(cd simh; make pdp11)
+(cd simh; make pdp11 tt2500)
 
 ./tool/palx -A < $RUG/ar.bin > rug.abs
 ./tool/palx -A < $SITS/salv.bin > salv.abs
