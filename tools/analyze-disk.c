@@ -37,6 +37,16 @@
 #define ACCB     0100
 #define EOFB     0200
 
+/* Descriptor byte types. */
+#define DTYPEF 0300	/* Type-of-descriptor-byte field. */
+#define DTSKP  0000	/* Skip N and grab 1 block. */
+#define DTCNT  0100	/* Grab N+1 blocks. */
+#define DTHOL  0140	/* Hole of N+1 blocks. */
+#define DTSADR 0200	/* Grab N+1 blocks starting at X (set addr). */
+#define DTSKCT 0300	/* Skip N1 and grab N2+1 blocks. */
+#define DTCNTF 0077	/* For first three types, the N field. */
+#define DTSCSK 0070	/* For skip/count, the skip field N1. */
+#define DTSCCT 0007	/*  "      "    , the count field N2. */
 
 typedef unsigned char octet;
 
@@ -146,7 +156,48 @@ show_name (octet *block, int i)
 }
 
 static void
-show_directory (octet *block)
+xxx (int i, int n)
+{
+  if (n > 1)
+    printf ("{%o-%o}", i, i + n - 1);
+  else
+    printf ("{%o}", i);
+}
+
+static void
+show_file (int x, octet *d, int n)
+{
+  int i;
+  printf ("[file:");
+  for (i = 0; i < n; i++)
+    {
+      switch (d[i] & DTYPEF)
+	{
+	case DTSKP:
+	  x += d[i] & DTCNTF;
+	  xxx (x, 1);
+	  x++;
+	  break;
+	case DTCNT:
+	  xxx (x, (d[i] & DTCNTF) + 1);
+	  x += (d[i] & DTCNTF) + 1;
+	  break;
+	case DTSADR:
+	  xxx (d[i+1] + (d[i+2] << 8), (d[i] & DTCNTF) + 1);
+	  i += 2;
+	  break;
+	case DTSKCT:
+	  x += (d[i] & DTSCSK) >> 7;
+	  xxx (x, d[i] & DTSCCT);
+	  x += d[i] & DTSCCT;
+	  break;
+	}
+    }
+  printf ("]");
+}
+
+static void
+show_directory (int x, octet *block, octet *d, int dn)
 {
   int flags;
   int dirend;
@@ -187,6 +238,8 @@ show_directory (octet *block)
       j = show_name (block, j);
 
       printf ("Descriptor:");
+      if ((flags & ~TYPEM) == FILEX)
+	show_file (x, &block[j], i+n-j);
       for (; j < i+n; j++)
 	{
 	  printf (" %03o", block[j]);
@@ -209,13 +262,14 @@ show_directory (octet *block)
     {
       --dir;
       printf ("Block: %03o\n", dir[1]);
-      show_directory(get_block (dir[1]));
+      show_directory(x, get_block (dir[1]), NULL, 0);
     }
 }
 
 int
 main (int argc, char **argv)
 {
+  static octet root[] = { 0200, 046, 000 };
   octet *buffer;
   FILE *f;
 
@@ -242,7 +296,7 @@ main (int argc, char **argv)
 
   //show_block (get_block (046));
   printf ("Block: %03o\n", 046);
-  show_directory (get_block (046));
+  show_directory (046, get_block (046), root, sizeof root);
 
   return 0;
 }
