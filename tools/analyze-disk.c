@@ -15,6 +15,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "libword.h"
 
@@ -50,12 +51,15 @@
 
 typedef unsigned char octet;
 
-/* Size of an RK11. */
+/* Size of an RK05. */
 octet image[2436 * BLOCK_OCTETS];
 int blocks;
 
-int directories[100];
-int *dir = directories;
+typedef struct {
+  char *path;
+  int block[1000];
+  int blocks;
+} dir_t;
 
 static int
 get_byte (FILE *f)
@@ -145,13 +149,12 @@ show_flags (octet flags)
 }
 
 static int
-show_name (octet *block, int i)
+show_name (char *name, octet *block, int i)
 {
-  printf ("Name: ");
   do
-    putchar (block[i] & 0177);
+    *name++ = block[i] & 0177;
   while ((block[i++] & 0200) == 0);
-  putchar ('\n');
+  name[0] = 0;
   return i;
 }
 
@@ -187,9 +190,9 @@ show_file (int x, octet *d, int n)
 	  i += 2;
 	  break;
 	case DTSKCT:
-	  x += (d[i] & DTSCSK) >> 7;
-	  xxx (x, d[i] & DTSCCT);
-	  x += d[i] & DTSCCT;
+	  x += (d[i] & DTSCSK) >> 3;
+	  xxx (x, (d[i] & DTSCCT) + 1);
+	  x += (d[i] & DTSCCT) + 1;
 	  break;
 	}
     }
@@ -197,35 +200,122 @@ show_file (int x, octet *d, int n)
 }
 
 static void
-show_directory (int x, octet *block, octet *d, int dn)
+parse_descriptor (int *block, int *blocks, int x, octet *d, int n)
 {
+  int i, j;
+  *blocks = 0;
+  for (i = 0; i < n; i++)
+    {
+      switch (d[i] & DTYPEF)
+	{
+	case DTSKP:
+	  x += d[i] & DTCNTF;
+	  block[(*blocks)++] = x;
+	  x++;
+	  break;
+	case DTCNT:
+	  for (j = 0; j <= (d[i] & DTCNTF); j++)
+	    block[(*blocks)++] = x++;
+	  break;
+	case DTSADR:
+	  x = d[i+1] + (d[i+2] << 8);
+	  for (j = 0; j <= (d[i] & DTCNTF); j++)
+	    block[(*blocks)++] = x++;
+	  i += 2;
+	  break;
+	case DTSKCT:
+	  x += ((d[i] & DTSCSK) >> 3);
+	  for (j = 0; j <= (d[i] & DTSCCT); j++)
+	    block[(*blocks)++] = x++;
+	  break;
+	}
+    }
+}
+
+static void
+write_block (FILE *f, octet *block, unsigned long size)
+{
+  if (size > BLOCK_OCTETS)
+    size = BLOCK_OCTETS;
+  fwrite (block, 1, size, f);
+}
+
+static void
+write_file (const char *path, int *block, int blocks, unsigned long size)
+{
+  int i;
+  FILE *f = fopen (path, "wb");
+  for (i = 0; i < blocks; i++, size -= BLOCK_OCTETS)
+    write_block (f, get_block (block[i]), size);
+  fclose (f);
+}
+
+static void
+print_timestamp (FILE *f, int date, int time)
+{
+  if (date != 0 && date != 0177777)
+    fprintf (f, "%4d-%02d-%02d ",
+	     1900 + ((date >> 9) & 0177),
+	     (date >> 5) & 017,
+	     date & 037);
+  else
+    fprintf (f, "- ");
+  if (time != 0 && time != 0177777)
+    fprintf (f, "%02d:%02d:%02d",
+	     (time >> 11) & 037,
+	     (time >> 5) & 077,
+	     2 * (time & 037));
+  else
+    fprintf (f, "-");
+  if (date != 0 && date != 0177777
+      && ((date >> 9) < 75 || (date >> 9) > 78))
+    fprintf (f, " [%06o]", date);
+}
+
+static void
+show_directory (dir_t *dir)
+{
+  dir_t subdirs[100];
+  dir_t *subdir = subdirs;
+  char path[200];
+  char name[100];
+  octet *block;
+  unsigned long size;
   int flags;
   int dirend;
   int i = 0, j;
-  int n;
+  int n, x;
+
+  x = dir->block[0];
+  block = get_block (x);
 
   dirend = get_pdp11_word (block + 6);
-  printf ("Directory ------------------\n");
-  printf ("Dirend %06o\n", dirend);
+  printf ("Directory %s ------------------\n", dir->path);
 
   while (i < dirend)
     {
+      int vern;
+
       n = block[i];
       flags = block[i+1];
-      printf ("Number of bytes %03o\n", n);
       show_flags (flags);
 
-      j = i + 2;
-      printf ("Something %d\n", get_pdp11_word (block + j + 2));
-      j += 2;
+      vern = get_pdp11_word (block + i + 2);
+      printf ("Version %o\n", vern);
+      j = i + 4;
+      size = ~0UL;
       if (flags & EOFB)
 	{
-	  printf ("Date %d\n", get_pdp11_word (block + j));
-	  j += 2;
-	  printf ("End of file %06o\n", get_pdp11_word (block + j));
-	  j += 2;
-	  printf ("Something else %d %d\n", get_pdp11_word (block + j), get_pdp11_word (block + j + 2));
-	  j += 4;
+	  printf ("EOF page pointer %d\n", get_pdp11_word (block + j));
+	  printf ("EOF byte pointer %d\n", get_pdp11_word (block + j + 2));
+	  size = 8192 * get_pdp11_word (block + j);
+	  size += get_pdp11_word (block + j + 2);
+	  printf ("Timestamp: ");
+	  print_timestamp (stdout,
+			   get_pdp11_word (block + j + 4),
+			   get_pdp11_word (block + j + 6));
+	  putchar ('\n');
+	  j += 8;
 	}
 
       if (flags & ACCB)
@@ -235,51 +325,65 @@ show_directory (int x, octet *block, octet *d, int dn)
 	  while ((block[j-1] & 0200) == 0);
 	}
 
-      j = show_name (block, j);
-
-      printf ("Descriptor:");
-      if ((flags & ~TYPEM) == FILEX)
-	show_file (x, &block[j], i+n-j);
-      for (; j < i+n; j++)
-	{
-	  printf (" %03o", block[j]);
-	  if (block[j] != 0200 && block[j] != 0 && block[j] != 2 && block[j] != 0160)
-	    {
-	      if ((flags & ~TYPEM) == DIREC) {
-		*++dir = block[j];
-		printf ("[%03o]", block[j]);
-	      }
-	    }
-	}
+      j = show_name (name, block, j);
+      printf ("Name: %s", name);
+      if (vern != 0 && vern != 0177777)
+	printf ("#%d", vern);
       putchar ('\n');
+
+      x = 0;
+      parse_descriptor (subdir->block, &subdir->blocks, x, &block[j], i+n-j);
+      {
+	int k;
+	printf ("<<");
+	for (k = 0; k < subdir->blocks; k++)
+	  printf (" %o", subdir->block[k]);
+	printf (">>");
+      }
+
+      switch (flags & ~TYPEM)
+	{
+	case FILEX:
+	  if (vern != 0 && vern != 0177777)
+	    sprintf (path, "%s %s#%d", dir->path, name, vern);
+	  else
+	    sprintf (path, "%s %s", dir->path, name);
+	  write_file (path, subdir->block, subdir->blocks, size);
+	  break;
+	case DIREC:
+	  sprintf (path, "%s %s", dir->path, name);
+	  subdir->path = strdup (path);
+	  subdir++;
+	  break;
+	}
 
       n = (n + 1) & ~1;
       i += n;
-      putchar ('\n');
     }
 
-  while (dir > directories)
+  for (dir = subdirs; dir != subdir; dir++)
     {
-      --dir;
-      printf ("Block: %03o\n", dir[1]);
-      show_directory(x, get_block (dir[1]), NULL, 0);
+      printf ("Subdir: %s\n", dir->path);
+      show_directory (dir);
     }
 }
 
 int
 main (int argc, char **argv)
 {
-  static octet root[] = { 0200, 046, 000 };
+  static dir_t root = { NULL, { 046 }, 1};
   octet *buffer;
   FILE *f;
 
-  if (argc != 2)
+  if (argc != 3)
     {
-      fprintf (stderr, "Usage: %s <file>\n", argv[0]);
+      fprintf (stderr, "Usage: %s <file> <name>\n", argv[0]);
       exit (1);
     }
 
   f = fopen (argv[1], "rb");
+
+  root.path = argv[2];
 
   buffer = image;
   blocks = 0;
@@ -294,9 +398,8 @@ main (int argc, char **argv)
 
   fprintf (stderr, "%o blocks in image\n", blocks);
 
-  //show_block (get_block (046));
   printf ("Block: %03o\n", 046);
-  show_directory (046, get_block (046), root, sizeof root);
+  show_directory (&root);
 
   return 0;
 }
