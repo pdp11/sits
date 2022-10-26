@@ -9,8 +9,7 @@ terminal() {
 }
 
 tt2500() {
-    sleep 4
-    ./simh/BIN/tt2500 2500/tt2500.simh >/dev/null 2>&1 &
+    (sleep 4; ./simh/BIN/tt2500 2500/tt2500.simh >/dev/null 2>&1) &
     PIDS="$PIDS $!"
     trap "kill $PIDS" EXIT QUIT INT TERM
 }
