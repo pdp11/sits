@@ -1,7 +1,7 @@
 do hardware.simh
 
 set debug stderr
-set mb debug
+;set mb debug
 ;set tv debug
 
 load rug.abs

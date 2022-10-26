@@ -2,6 +2,7 @@ set console wru=034
 
 set cpu 11/45
 set cpu 216k
+set cpu idle
 
 set hk disabled
 set rl disabled
@@ -19,7 +20,7 @@ set pclk enabled
 set ptr enabled
 set ptp enabled
 set dci enabled address=17774000 vector=300 lines=1
-set dh enabled address=17760020 vector=340 lines=16
+set dh enabled address=17760020 vector=340
 set rk enabled address=17777400 vector=220
 set ng enabled address=17764040 vector=270 type=dazzle
 set tv enabled address=17764100
