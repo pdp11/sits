@@ -15,7 +15,6 @@ set tm disabled
 set tq disabled
 set rf disabled
 
-set ke enabled
 set pclk enabled
 set ptr enabled
 set ptp enabled
