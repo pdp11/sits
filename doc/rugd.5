@@ -1,0 +1,129 @@
+.xgp
+.vsp 10
+.font 0 25fg
+.ce
+.adjust
+Introduction
+
+	RUG is a symbolic debugging program for the PDP11. The version
+described in this document is used for debugging the LOGO operating
+system, the SITS operating system and associated programs.
+It provides the ability to set breakpoints and examine and deposit
+instuctions and constants symbolically, as well as the ability
+to load and dump programs on the disk and to load programs
+from the PDP10 and from papertape.
+It is a swapping debugger, that is, when the program being debugged
+is resident in the real core of the PDP11 the debugger is written
+out on to disk (except for a small resident portion), and when the
+debugger is resident in core the program being debugged is on the
+disk.
+
+.ce
+History
+
+	RUG is a symbolic debugging program for the PDP11. It was originally
+the octal debugger (ODT) put out by DEC and was almost completely
+rewritten by Radia Perlman, who put in most of the now existing features.
+Since then the version used by the LOGO group has been modified by
+Mike Beeler, Fred Hanna, Bruce Edwards and Ron Lebel. There have also
+been offshoots, both within the AI Lab (Meyer Billmers' Mini Robot
+version) and outside the lab. The current version used by the LOGO
+Lab is maintained by Bruce Edwards and Ron Lebel.
+
+.ce
+Overview
+
+	When RUG is first loaded (from papertape with the absolute
+loader, through the 10 to 11 interface or by some other ruse) and
+started, it writes out a so called inviolate copy of itself onto
+a special part of the disk. If the world gets clobbered in
+such a way that normal restart procedures don't work, this copy
+can usually be loaded and started, instead of reloading some
+other way. When RUG is running and a command is given which
+examines or modifies the core image of the program being debugged, RUG
+refers to the copy of the core image that it maintains on the disk.
+If a command is given which tranfers control to the program being
+debugged (such as starting it or proceedign from a breakpoint)
+RUG first writes itself out to a special area (not the inviolate
+area) then transfers control to the resident portion which reads
+the program from the disk and starts it at the proper location.
+If the program does something to transfer control back to RUG
+(hits a breakpoint or jumps to the resident portion) the resident
+portion writes the program back onto the disk, reads the swapped
+RUG back in and starts it. All of this shuffling also takes care
+to preserve the state of devices that both RUG and the program being
+debugged use, like the console teletype and the disk.
+	While RUG is resident it usually accepts commands from
+the console teletype, unless it is performing some long operation
+like loading a program. The commands generally fall into four
+catergories: file operations (loading and dumping programs),
+program examining/depositing, program starting/proceeding
+and typeout mode changing. Commands are either a single control
+character or an alphabetic cahracter preceeded by one
+or two altmodes. (Altmode will be indicated in the text by $).
+Some commands also take a preceeding argument.
+Some commands read one or more characters after themselves.
+
+.ce
+Commands
+
+File Operations
+
+	The command $L clears the core image that RUG
+keeps on the disk and then loads a file into it from the specified
+device; the command $$L loads without clearing core.
+The device and file name are specified after the $L:
+.br
+$L  <device>:  <filename><CR>
+.br
+Where <device> is one of M, T, P, 0, 1, 2 or 3. M and T load from the
+PDP10, using the 10 to 11 interface or the DC11 teletype line,
+respectively. The file name specified is the PDP10 file name to use.
+The device P is the paper tape reader; no file name is needed.
+The devices 0, 1, 2 and 3 are the moving head disks; the file name
+is the single file name of the desired file in the . directory
+of the specified disk. If a mistake is made typing in the file
+name <rubout> will allow the whole name to be retyped; if a mistake
+is made in typeing the device name a new <device>: may be typed.
+If it is desired to abort the command <cntl>S must be typed.
+.sp
+	The command $Y dumps the current core image to the specified
+disk file:
+.br
+$Y  <device>:  <filename><CR>
+.br
+Where device must be one of 0, 1, 2 or 3. This will create a file
+on the . directory of the specified disk with the specified name.
+If a file of that name already exists it will ask if you want to
+delete it. A "Y" response will cause the old file to be deleted;
+any other response will cause the command to be aborted. Rubbing
+out and aborting work like for $L.
+.sp
+	The command <cntl>O deletes a specified file. It takes a device
+and filename like $Y and asks "SURE?" before deleteing the file;
+a "Y" response will cause the file to be deleted, any other response will
+cause the command to be aborted.
+.SP 2
+Program Examining and Depositing
+.sp
+	The basic command for examining locations is "/":
+.br
+<address expression>/  1<contents>0
+.br
+causes RUG to type out the contents of the location at the
+address specified by the address expresion. The address expresion
+can contain symbols, octal or decimal numbers and arithmetic
+operators, as decribed below. RUG types out the the value in the
+addresses location according to the current typeout mode (described
+below). After the value is typed out the location is said
+to be "open" and its value can be modified.
+The location is modified by typeing in a new value and closing
+the location; there are several commands which close the currently
+open location. <CR> closes the location and does nothing else:
+.br
+<address expression>/  1<old contents>0  <new contents><CR>
+.br
+The new contents typed in can be an address expresion or an instruction;
+since PDP11 instructions can be more than one word long more than
+one word may be modified when the location is closed.
+
