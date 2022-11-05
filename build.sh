@@ -34,5 +34,6 @@ punch jotto
 punch dired
 punch inquir
 punch tinte
+punch its
 
 ./simh/BIN/pdp11 do/install.simh

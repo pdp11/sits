@@ -27,6 +27,8 @@ set mb enabled address=17770000 vector=374
 
 at -U dci 20001
 at -U dh 20002
+;at -U dh line=10,20003,connect=localhost:10003
+at -U dh line=10,20003
 at rk0 media/rk0.dsk
 at rk1 media/rk1.dsk
 at rk2 media/rk2.dsk
