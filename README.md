@@ -33,9 +33,8 @@ represent teletypes, vector displays, and raster displays.
 
 ### Using SITS
 
-Type ^Z to a teletype to log in, or Escape on a TV display.  Since no
-users are registered, just type Enter to get the `#` System Sphere
-prompt.  Type `LOGO` to run logo, or `DDT` to run the debugger.
+Type ^Z to a teletype to log in, or Escape on a TV display.  Log in as
+GUEST.  Type `: 0; . SLOGO` to run Logo.
 
 Useful commands in DDT are `:HELP` to see a list of commands, `:SETD`
 to set the current directory, `:LISTF` to list files, and `:LOGOUT` to

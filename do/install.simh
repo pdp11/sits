@@ -84,8 +84,28 @@ expect ">>" send ":PDUMP 0;. SLOGO\r"
 continue
 
 noexpect
+expect "*" send ": 0; . DIRED\r"; continue
+expect ">" send "CRD 0; USRINFO\r"; continue
+expect ">" send "CRD 0; USERS\r"; continue
+expect ">" send "CRD 0; USERS GUEST\r"; continue
+expect ">" send "Q\r"
+continue
+
+noexpect
+expect ">>" send ": 0; . INQUIR\r"; continue
+expect "USER NAME:" send "GUEST\r"; continue
+expect "FULL NAME:" send "Guest User\r"; continue
+expect "IS THIS RIGHT?" send "\r"; continue
+expect "DIRECTORY NAME:" send "SITS0; USERS GUEST\r"; continue
+expect "IS THIS RIGHT?" send "\r"; continue
+expect "DEFALT PROGRAM" send "DDT\r"; continue
+expect "IS THIS RIGHT?" send "\r"; continue
+expect "MODE:" send "Q\r"
+continue
+
+noexpect
 dep system sr 4
-expect "*" send "\032"
+expect ">>" send "\032"
 continue
 
 noexpect
