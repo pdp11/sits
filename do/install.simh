@@ -84,6 +84,15 @@ expect ">>" send ":PDUMP 0;. SLOGO\r"
 continue
 
 noexpect
+expect "*" send "\033L0;. HLOGO\r"
+continue
+
+noexpect
+expect "*" send "PURIFY\033G"; continue
+expect ">>" send ":PDUMP 0;. HLOGO\r"
+continue
+
+noexpect
 expect "*" send ": 0; . DIRED\r"; continue
 expect ">" send "CRD 0; USRINFO\r"; continue
 expect ">" send "CRD 0; USERS\r"; continue

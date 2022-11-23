@@ -35,5 +35,6 @@ punch dired
 punch inquir
 punch tinte
 punch teco
+punch hlogo
 
 ./simh/BIN/pdp11 do/install.simh
